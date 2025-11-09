@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "",
+                "Name": "Prajjwal"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "Display random quotes from a directory",
+        "Icon": "text-speak",
+        "Id": "org.kde.prajjwal.quotewidget",
+        "License": "GPL",
+        "Name": "Quote of the Day",
+        "Version": "3.0",
+        "Website": ""
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
+

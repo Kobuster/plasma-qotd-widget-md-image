@@ -1,0 +1,297 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import org.kde.plasma.plasmoid
+import org.kde.plasma.core as PlasmaCore
+import org.kde.kirigami as Kirigami
+import Qt.labs.platform as Platform
+import Qt.labs.folderlistmodel
+
+PlasmoidItem {
+    id: root
+    
+    width: Kirigami.Units.gridUnit * 20
+    height: Kirigami.Units.gridUnit * 15
+
+    // Configuration properties
+    property string quotesFile: plasmoid.configuration.quotesFile
+    property int rotationInterval: plasmoid.configuration.rotationInterval
+    property real backgroundOpacity: plasmoid.configuration.backgroundOpacity
+    property color textColor: plasmoid.configuration.textColor
+    property color outlineColor: plasmoid.configuration.outlineColor
+    property color backgroundColor: plasmoid.configuration.backgroundColor
+    property string textFont: plasmoid.configuration.textFont
+    
+    // State properties
+    property string currentQuote: plasmoid.configuration.currentQuote
+    property var quotes: []
+
+    // Timer for auto-rotation
+    Timer {
+        id: rotationTimer
+        interval: rotationInterval * 1000
+        running: true
+        repeat: true
+        onTriggered: loadRandomQuote()
+    }
+
+    // File reader using executable DataSource for Plasma 6
+    PlasmaCore.DataSource {
+        id: fileReader
+        engine: "executable"
+        property string targetFile: ""
+        
+        onTargetFileChanged: {
+            if (targetFile) {
+                var filePath = targetFile.toString().replace("file://", "");
+                console.log("Reading file:", filePath);
+                // Read up to 10000 lines from the file
+                var command = "head -n 10000 '" + filePath + "' 2>&1 || echo 'ERROR: Cannot read file'";
+                connectedSources = [command];
+            }
+        }
+        
+        onNewData: {
+            console.log("DataSource newData received, exit code:", data["exit code"]);
+            if (data["exit code"] === 0) {
+                var content = data.stdout;
+                
+                // Check for error message
+                if (content.indexOf("ERROR: Cannot read file") === 0) {
+                    currentQuote = i18n("Error: Cannot read file.\n\nPlease check the file path in settings.");
+                    disconnectSource(sourceName);
+                    return;
+                }
+                
+                console.log("Content length:", content.length);
+                
+                // Parse fortune file format (quotes separated by %)
+                quotes = content.split(/\n%\n/).map(function(q) { 
+                    return q.trim(); 
+                }).filter(function(q) { 
+                    return q.length > 0; 
+                });
+                
+                console.log("Parsed quotes:", quotes.length);
+                
+                if (quotes.length > 0) {
+                    loadRandomQuote();
+                } else {
+                    currentQuote = i18n("No quotes found in file.\n\nExpected format: quotes separated by % on its own line");
+                }
+            } else {
+                console.log("Command failed with exit code:", data["exit code"]);
+                currentQuote = i18n("Error loading file:\n%1", targetFile.replace("file://", ""));
+            }
+            disconnectSource(sourceName);
+        }
+    }
+    
+    // Load and parse fortune file
+    function loadFortuneFile() {
+        if (!quotesFile) {
+            currentQuote = i18n("No quotes file configured.\n\nPlease select a file in settings.");
+            return;
+        }
+        
+        var filePath = quotesFile;
+        
+        // If relative path, resolve to plasmoid directory
+        if (!filePath.startsWith("/") && !filePath.startsWith("~") && !filePath.startsWith("file://")) {
+            // Get the plasmoid's installed location
+            var baseUrl = Qt.resolvedUrl(".").toString();
+            // Go up from ui/ to package root, then to quotes
+            filePath = baseUrl + "../" + filePath;
+        } else {
+            if (filePath.startsWith("~/")) {
+                filePath = filePath.replace("~", Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation));
+            }
+            if (!filePath.startsWith("file://")) {
+                filePath = "file://" + filePath;
+            }
+        }
+        
+        console.log("Loading quotes from:", filePath);
+        fileReader.targetFile = filePath;
+    }
+
+    // Load a random quote from parsed quotes
+    function loadRandomQuote() {
+        if (quotes.length === 0) {
+            loadFortuneFile();
+            return;
+        }
+        
+        var randomIndex = Math.floor(Math.random() * quotes.length);
+        currentQuote = quotes[randomIndex];
+        plasmoid.configuration.currentQuote = currentQuote;
+        plasmoid.configuration.lastUpdateTime = Date.now();
+    }
+
+    // Check if we should restore or refresh quote on startup
+    Component.onCompleted {    // File reader using XMLHttpRequest for Plasma 6
+    function readQuotesFile(filePath) {
+        console.log("readQuotesFile called with:", filePath);
+        var xhr = new XMLHttpRequest();
+        
+        xhr.onreadystatechange = function() {
+            console.log("XHR readyState:", xhr.readyState, "status:", xhr.status);
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200 || xhr.status === 0) {
+                    var content = xhr.responseText;
+                    console.log("Content length:", content.length);
+                    
+                    // Basic check for binary content (non-printable characters)
+                    var binaryTest = /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content.substring(0, 1000));
+                    if (binaryTest) {
+                        currentQuote = i18n("Error: Selected file appears to be binary.\n\nPlease select a text file.");
+                        return;
+                    }
+                    
+                    // Limit to ~10000 lines
+                    var lines = content.split('\n');
+                    if (lines.length > 10000) {
+                        content = lines.slice(0, 10000).join('\n');
+                    }
+                    
+                    // Parse fortune file format (quotes separated by %)
+                    quotes = content.split(/\n%\n/).map(function(q) { 
+                        return q.trim(); 
+                    }).filter(function(q) { 
+                        return q.length > 0; 
+                    });
+                    
+                    console.log("Parsed quotes:", quotes.length);
+                    
+                    if (quotes.length > 0) {
+                        loadRandomQuote();
+                    } else {
+                        currentQuote = i18n("No quotes found in file.\n\nExpected format: quotes separated by % on its own line");
+                    }
+                } else {
+                    console.log("XHR error, status:", xhr.status);
+                    currentQuote = i18n("Error loading file (status: %1)", xhr.status);
+                }
+            }
+        };
+        
+        xhr.onerror = function() {
+            console.log("XHR network error");
+            currentQuote = i18n("Network error loading file");
+        };
+        
+        console.log("Opening XHR for:", filePath);
+        try {
+            xhr.open("GET", filePath, true);
+            xhr.send();
+        } catch (e) {
+            console.log("XHR exception:", e.toString());
+            currentQuote = i18n("Exception loading file: %1", e.toString());
+        }
+    }
+
+    // Check if we should restore or refresh quote on startup
+    Component.onCompleted: {
+        console.log("=== Quote Widget Completed ===");
+        console.log("quotesFile:", quotesFile);
+        loadFortuneFile();
+        
+        var timeSinceUpdate = Date.now() - plasmoid.configuration.lastUpdateTime;
+        var intervalMs = rotationInterval * 1000;
+        
+        if (currentQuote && timeSinceUpdate < intervalMs) {
+            // Quote is still fresh, keep it
+            rotationTimer.interval = intervalMs - timeSinceUpdate;
+            rotationTimer.restart();
+        }
+    }
+
+    // Watch for configuration changes
+    onQuotesFileChanged: {
+        loadFortuneFile();
+    }
+    
+    onRotationIntervalChanged: {
+        rotationTimer.interval = rotationInterval * 1000;
+        rotationTimer.restart();
+    }
+
+    // Main UI
+    fullRepresentation: ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: backgroundOpacity === 0 ? "transparent" : Qt.rgba(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundOpacity)
+
+            Flickable {
+                id: flickable
+                anchors.fill: parent
+                anchors.margins: 10
+                contentWidth: quoteText.width
+                contentHeight: quoteText.height
+                clip: true
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
+
+                Text {
+                    id: quoteText
+                    width: flickable.width
+                    text: currentQuote || i18n("Loading quote...")
+                    color: textColor
+                    font.family: {
+                        if (textFont) {
+                            var parts = textFont.split(",");
+                            return parts[0] || "";
+                        }
+                        return "";
+                    }
+                    font.pointSize: {
+                        if (textFont) {
+                            var parts = textFont.split(",");
+                            if (parts.length > 1) {
+                                return parseInt(parts[1]) || 12;
+                            }
+                        }
+                        return 12;
+                    }
+                    font.weight: {
+                        if (textFont) {
+                            var parts = textFont.split(",");
+                            if (parts.length > 2) {
+                                return parseInt(parts[2]) || Font.Normal;
+                            }
+                        }
+                        return Font.Normal;
+                    }
+                    font.italic: {
+                        if (textFont) {
+                            var parts = textFont.split(",");
+                            if (parts.length > 3) {
+                                return parts[3] === "italic";
+                            }
+                        }
+                        return false;
+                    }
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    
+                    style: Text.Outline
+                    styleColor: outlineColor
+                    
+                    // Click to advance
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: loadRandomQuote()
+                        cursorShape: Qt.PointingHandCursor
+                    }
+                }
+            }
+        }
+    }
+}
