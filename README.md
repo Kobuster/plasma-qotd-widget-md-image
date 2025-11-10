@@ -4,12 +4,26 @@ A KDE Plasma widget that displays random quotes from a directory. Supports both 
 
 I wanted something like this for a while, figured I'd just use an LLM to generate one - vibe coded with a bit of review of the shell scripts. Does what I need it to do. You can change the quotes file to any text file formatted as a `fortune` file.
 
+![Quote of the Day Widget on Desktop](img/desktop_widget.png)
+
 <details>
 <summary>Installation from KDE Store</summary>
 
-1. Right-click on your desktop and select "Add Widgets...".
-2. Click on "Get New Widgets" and select "Download New Plasma Widgets".
-3. Search for "Quote of the Day" and click "Install".
+1.  Right-click on your desktop, and select "Enter Edit Mode".
+    ![Enter Edit Mode](img/edit_desktop_context_menu.png)
+
+2.  Click on "Add Widgets".
+    ![Add Widgets](img/add_or_manage_widgets.png)
+
+3.  Click on "Get New Widgets" and select "Download New Plasma Widgets".
+    ![Get New Widgets](img/get_new_widget_button.png)
+    ![Download New Widgets](img/get_new_widget_choices.png)
+
+4.  Search for "Quote of the Day" and click "Install".
+    ![Search for Widget](img/widget_search.png)
+
+5. Now, you should be able to search for the widget locally and add it to your desktop.
+    ![Install Widget](img/installed_qotd.png)
 
 </details>
 
@@ -33,6 +47,12 @@ The installer auto-detects your Plasma version and installs the widget.
 ## Configuration
 
 If you want to customize the widget, right-click on it and select "Configure...".
+
+![Configure Widget](img/context_menu.png)
+
+This will open the configuration window:
+
+![Configuration Window](img/qotd_config.png)
 
 <details>
 <summary>Appearance Settings</summary>

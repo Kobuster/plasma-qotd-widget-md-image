@@ -42,7 +42,7 @@ KCM.SimpleKCM {
             TextField {
                 id: quotesFile
                 Layout.fillWidth: true
-                placeholderText: i18n("../quotes/english_quotes.txt")
+                placeholderText: i18n("../quotes/inspirational_quotes.txt")
             }
             
             Label {
@@ -76,7 +76,7 @@ KCM.SimpleKCM {
                 icon.name: "edit-reset"
                 text: i18n("Reset to Default")
                 onClicked: {
-                    quotesFile.text = "../quotes/english_quotes.txt";
+                    quotesFile.text = "../quotes/inspirational_quotes.txt";
                 }
             }
         }

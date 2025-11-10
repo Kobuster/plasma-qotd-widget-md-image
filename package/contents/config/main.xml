@@ -7,7 +7,7 @@
 
   <group name="General">
     <entry name="quotesFile" type="String">
-      <default>quotes/english_quotes.txt</default>
+      <default>quotes/inspirational_quotes.txt</default>
     </entry>
     <entry name="rotationInterval" type="Int">
       <default>120</default>
