@@ -33,7 +33,7 @@ Item {
     }
 
     // Load and parse fortune file
-    function loadFortuneFile() {
+    function loadFortuneFile(forceReload) {
         if (!quotesFile) {
             currentQuote = i18n("No quotes file configured.\n\nPlease select a file in settings.");
             return;
@@ -50,6 +50,16 @@ Item {
             }
             if (!filePath.startsWith("file://")) {
                 filePath = "file://" + filePath;
+            }
+        }
+        
+        if (forceReload) {
+            // Force reload by disconnecting first, then setting new source
+            if (fileReader.source) {
+                var oldSource = fileReader.source;
+                var oldFilePath = oldSource.toString().replace("file://", "");
+                var oldCommand = "if file -b --mime-type '" + oldFilePath + "' | grep -q '^text/'; then head -n 10000 '" + oldFilePath + "'; else echo 'BINARY_FILE_ERROR'; fi";
+                fileReader.disconnectSource(oldCommand);
             }
         }
         
@@ -125,6 +135,17 @@ Item {
             rotationTimer.interval = intervalMs - timeSinceUpdate;
             rotationTimer.restart();
         }
+        
+        // Add context menu action for reloading quotes
+        plasmoid.setAction("reloadQuotes", i18n("Reload Quotes from Disk"), "view-refresh");
+    }
+    
+    function action_reloadQuotes() {
+        console.log("Reloading quotes from disk...");
+        quotes = [];  // Clear existing quotes
+        // Force reload by clearing the source first, then reloading
+        fileReader.source = "";
+        loadFortuneFile(true);  // Reload from file with force flag
     }
 
     // Watch for configuration changes

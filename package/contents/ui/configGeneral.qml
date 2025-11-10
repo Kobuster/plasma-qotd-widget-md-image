@@ -43,9 +43,40 @@ Kirigami.FormLayout {
             placeholderText: i18n("quotes/english_quotes.txt")
         }
         
+        Label {
+            text: "?"
+            font.bold: true
+            color: Kirigami.Theme.linkColor
+            
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                hoverEnabled: true
+                
+                ToolTip.visible: containsMouse
+                ToolTip.text: i18n("Click to learn how to create custom quote files")
+                
+                onClicked: {
+                    Qt.openUrlExternally("https://gitlab.com/plasma-qotd-widget/plasma-qotd-widget/-/blob/main/creating_quotes.md")
+                }
+            }
+        }
+    }
+    
+    RowLayout {
+        
         Button {
             icon.name: "document-open"
+            text: i18n("Browse...")
             onClicked: fileDialog.open()
+        }
+        
+        Button {
+            icon.name: "edit-reset"
+            text: i18n("Reset to Default")
+            onClicked: {
+                quotesFile.text = "quotes/english_quotes.txt";
+            }
         }
     }
 

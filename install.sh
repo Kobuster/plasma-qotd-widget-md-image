@@ -126,21 +126,7 @@ create_sample_quotes() {
     if [ ! -d "$quotes_dir" ]; then
         log_info "Creating sample quotes directory..."
         mkdir -p "$quotes_dir"
-        
-        cat > "$quotes_dir/sample1.txt" << 'EOF'
-The only way to do great work is to love what you do.
-- Steve Jobs
-EOF
-
-        cat > "$quotes_dir/sample2.txt" << 'EOF'
-In the middle of difficulty lies opportunity.
-- Albert Einstein
-EOF
-
-        cat > "$quotes_dir/sample3.txt" << 'EOF'
-The future belongs to those who believe in the beauty of their dreams.
-- Eleanor Roosevelt
-EOF
+        cp -r "$SCRIPT_DIR/quotes/"*.txt "$quotes_dir"
 
         log_success "Created sample quotes in $quotes_dir"
     fi

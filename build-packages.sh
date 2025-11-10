@@ -8,6 +8,7 @@ set -e
 PLUGIN_ID="org.kde.prajjwal.quotewidget"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
 
 # Colors
 GREEN='\033[0;32m'
@@ -92,6 +93,13 @@ main() {
     log_info "Building Plasma Marketplace Packages"
     echo "========================================"
     echo ""
+    
+    # Display current version
+    if [ -f "$VERSION_FILE" ]; then
+        local version=$(cat "$VERSION_FILE")
+        log_info "Current version: $version"
+        echo ""
+    fi
     
     # Check if zip is available
     if ! command -v zip &> /dev/null; then

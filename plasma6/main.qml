@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
+import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import Qt.labs.platform as Platform
 import org.kde.plasma.plasma5support as Plasma5Support
@@ -24,6 +25,21 @@ PlasmoidItem {
     // State properties
     property string currentQuote: plasmoid.configuration.currentQuote
     property var quotes: []
+
+    // Context menu action for reloading quotes
+    Plasmoid.contextualActions: [
+        PlasmaCore.Action {
+            text: i18n("Reload Quotes from Disk")
+            icon.name: "view-refresh"
+            onTriggered: {
+                console.log("Reloading quotes from disk...");
+                quotes = [];  // Clear existing quotes
+                // Force reload by clearing targetFile first
+                fileReader.targetFile = "";
+                loadFortuneFile(true);  // Reload from file
+            }
+        }
+    ]
 
     // Timer for auto-rotation
     Timer {
@@ -87,7 +103,7 @@ PlasmoidItem {
     }
     
     // Load and parse fortune file
-    function loadFortuneFile() {
+    function loadFortuneFile(forceReload) {
         if (!quotesFile) {
             currentQuote = i18n("No quotes file configured.\n\nPlease select a file in settings.");
             return;
@@ -107,6 +123,15 @@ PlasmoidItem {
             }
             if (!filePath.startsWith("file://")) {
                 filePath = "file://" + filePath;
+            }
+        }
+        
+        if (forceReload) {
+            // Force reload by disconnecting the old command first
+            if (fileReader.targetFile) {
+                var oldFilePath = fileReader.targetFile.toString().replace("file://", "");
+                var oldCommand = "head -n 10000 '" + oldFilePath + "' 2>&1 || echo 'ERROR: Cannot read file'";
+                fileReader.disconnectSource(oldCommand);
             }
         }
         
