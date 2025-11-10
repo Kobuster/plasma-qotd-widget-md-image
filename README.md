@@ -66,7 +66,7 @@ This will open the configuration window:
 <details>
 <summary>Content Settings</summary>
 
--   **Quotes File**: You can use your own quotes file. The file must be in the `fortune` format. For detailed instructions, see [Creating Your Own Fortune File](FORTUNE_FILE_FORMAT.md). You can also download one from a public repository like [this one](https://github.com/JKirchartz/fortunes/blob/master/actualcookies).
+-   **Quotes File**: You can use your own quotes file. The file must be in the `fortune` format. For detailed instructions, see [Creating Your Own Fortune File](creating_quotes.md). You can also download one from a public repository like [this one](https://github.com/JKirchartz/fortunes/blob/master/actualcookies).
 -   **Rotation Interval**: Set the time between quote changes, from 10 seconds to 24 hours (default is 2 minutes).
 
 </details>

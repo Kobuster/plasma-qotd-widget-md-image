@@ -13,7 +13,7 @@
         "Id": "org.kde.prajjwal.quotewidget",
         "License": "GPL",
         "Name": "Quote of the Day",
-        "Version": "3.2",
+        "Version": "3.3",
         "Website": ""
     },
     "X-Plasma-API-Minimum-Version": "6.0"

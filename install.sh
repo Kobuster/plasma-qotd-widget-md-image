@@ -95,11 +95,19 @@ install_plasmoid() {
     log_info "Copying Plasma $plasma_version adapter files..."
     if [ "$plasma_version" == "5" ]; then
         cp "$SCRIPT_DIR/plasma5/metadata.desktop" "$INSTALL_DIR/"
+        # Override with Plasma 5 specific config (main.xml with correct path)
+        if [ -f "$SCRIPT_DIR/plasma5/main.xml" ]; then
+            cp "$SCRIPT_DIR/plasma5/main.xml" "$INSTALL_DIR/contents/config/"
+        fi
     else
         cp "$SCRIPT_DIR/plasma6/metadata.json" "$INSTALL_DIR/"
         cp "$SCRIPT_DIR/plasma6/main.qml" "$INSTALL_DIR/contents/ui/"
         cp "$SCRIPT_DIR/plasma6/config.qml" "$INSTALL_DIR/contents/config/"
         cp "$SCRIPT_DIR/plasma6/configGeneral.qml" "$INSTALL_DIR/contents/ui/"
+        # Override with Plasma 6 specific config (main.xml with correct path)
+        if [ -f "$SCRIPT_DIR/plasma6/main.xml" ]; then
+            cp "$SCRIPT_DIR/plasma6/main.xml" "$INSTALL_DIR/contents/config/"
+        fi
     fi
     
     log_success "Files copied to $INSTALL_DIR"

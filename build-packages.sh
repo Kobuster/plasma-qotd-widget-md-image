@@ -43,6 +43,11 @@ build_plasma5() {
     # Copy Plasma 5 metadata
     cp "$SCRIPT_DIR/plasma5/metadata.desktop" "$pkg_dir/"
     
+    # Override with Plasma 5 specific config (main.xml with correct path)
+    if [ -f "$SCRIPT_DIR/plasma5/main.xml" ]; then
+        cp "$SCRIPT_DIR/plasma5/main.xml" "$pkg_dir/contents/config/"
+    fi
+    
     # Copy quotes (optional - include sample quotes)
     if [ -d "$SCRIPT_DIR/quotes" ]; then
         cp -r "$SCRIPT_DIR/quotes" "$pkg_dir/"
@@ -73,6 +78,11 @@ build_plasma6() {
     cp "$SCRIPT_DIR/plasma6/main.qml" "$pkg_dir/contents/ui/"
     cp "$SCRIPT_DIR/plasma6/config.qml" "$pkg_dir/contents/config/"
     cp "$SCRIPT_DIR/plasma6/configGeneral.qml" "$pkg_dir/contents/ui/"
+    
+    # Override with Plasma 6 specific config (main.xml with correct path)
+    if [ -f "$SCRIPT_DIR/plasma6/main.xml" ]; then
+        cp "$SCRIPT_DIR/plasma6/main.xml" "$pkg_dir/contents/config/"
+    fi
     
     # Copy quotes (optional - include sample quotes)
     if [ -d "$SCRIPT_DIR/quotes" ]; then
