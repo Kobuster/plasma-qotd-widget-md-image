@@ -9,13 +9,23 @@ KCM.SimpleKCM {
     id: generalPage
 
     property alias cfg_quotesFile: quotesFile.text
-    property alias cfg_rotationInterval: rotationInterval.value
+    property int cfg_rotationInterval
     property alias cfg_backgroundOpacity: backgroundOpacity.value
     property string cfg_textFont
     
     property string cfg_textColor
     property string cfg_outlineColor
     property string cfg_backgroundColor
+    
+    // Separate time components
+    property int hours: Math.floor(cfg_rotationInterval / 3600)
+    property int minutes: Math.floor((cfg_rotationInterval % 3600) / 60)
+    property int seconds: cfg_rotationInterval % 60
+    
+    // Update rotationInterval when component values change
+    function updateRotationInterval() {
+        cfg_rotationInterval = hoursSpinBox.value * 3600 + minutesSpinBox.value * 60 + secondsSpinBox.value;
+    }
     
     onCfg_textColorChanged: textColorButton.buttonColor = cfg_textColor
     onCfg_outlineColorChanged: outlineColorButton.buttonColor = cfg_outlineColor
@@ -25,6 +35,11 @@ KCM.SimpleKCM {
         textColorButton.buttonColor = cfg_textColor
         outlineColorButton.buttonColor = cfg_outlineColor
         backgroundColorButton.buttonColor = cfg_backgroundColor
+        
+        // Initialize time spinboxes
+        hoursSpinBox.value = Math.floor(cfg_rotationInterval / 3600);
+        minutesSpinBox.value = Math.floor((cfg_rotationInterval % 3600) / 60);
+        secondsSpinBox.value = cfg_rotationInterval % 60;
         
         if (cfg_textFont) {
             var parts = cfg_textFont.split(",");
@@ -81,38 +96,44 @@ KCM.SimpleKCM {
             }
         }
 
-        // Rotation Interval
-        SpinBox {
-            id: rotationInterval
-            Kirigami.FormData.label: i18n("Rotation Interval (seconds):")
-            from: 10
-            to: 86400
-            stepSize: 10
-            editable: true
-            value: cfg_rotationInterval
+        // Rotation Interval - KDE style with separate hours, minutes, seconds
+        RowLayout {
+            Kirigami.FormData.label: i18n("Change every:")
             
-            onValueChanged: {
-                cfg_rotationInterval = value;
+            SpinBox {
+                id: hoursSpinBox
+                from: 0
+                to: 23
+                editable: true
+                onValueChanged: updateRotationInterval()
             }
             
-            textFromValue: function(value) {
-                if (value < 60) return value + "s";
-                if (value < 3600) return Math.floor(value / 60) + "m";
-                return Math.floor(value / 3600) + "h " + Math.floor((value % 3600) / 60) + "m";
+            Label {
+                text: i18n("hrs")
             }
             
-            valueFromText: function(text) {
-                var seconds = 0;
-                var parts = text.replace(/[hms]/g, ' ').trim().split(/\s+/);
-                if (text.indexOf('h') > -1) {
-                    seconds += parseInt(parts[0] || 0) * 3600;
-                    if (parts.length > 1) seconds += parseInt(parts[1] || 0) * 60;
-                } else if (text.indexOf('m') > -1) {
-                    seconds += parseInt(parts[0] || 0) * 60;
-                } else {
-                    seconds = parseInt(parts[0] || 10);
-                }
-                return Math.max(10, Math.min(86400, seconds));
+            SpinBox {
+                id: minutesSpinBox
+                from: 0
+                to: 59
+                editable: true
+                onValueChanged: updateRotationInterval()
+            }
+            
+            Label {
+                text: i18n("mins")
+            }
+            
+            SpinBox {
+                id: secondsSpinBox
+                from: 0
+                to: 59
+                editable: true
+                onValueChanged: updateRotationInterval()
+            }
+            
+            Label {
+                text: i18n("secs")
             }
         }
 

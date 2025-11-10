@@ -44,7 +44,7 @@ PlasmoidItem {
     // Timer for auto-rotation
     Timer {
         id: rotationTimer
-        interval: rotationInterval * 1000
+        interval: root.rotationInterval * 1000
         running: true
         repeat: true
         onTriggered: loadRandomQuote()
@@ -156,14 +156,26 @@ PlasmoidItem {
     Component.onCompleted: {
         console.log("=== Quote Widget Completed ===");
         console.log("quotesFile:", quotesFile);
+        console.log("rotationInterval:", rotationInterval, "seconds");
         loadFortuneFile();
         
         var timeSinceUpdate = Date.now() - plasmoid.configuration.lastUpdateTime;
-        var intervalMs = rotationInterval * 1000;
+        var intervalMs = root.rotationInterval * 1000;
         
         if (currentQuote && timeSinceUpdate < intervalMs) {
-            // Quote is still fresh, keep it
-            rotationTimer.interval = intervalMs - timeSinceUpdate;
+            // Quote is still fresh, keep it and adjust timer
+            var remainingTime = intervalMs - timeSinceUpdate;
+            rotationTimer.interval = remainingTime;
+            rotationTimer.restart();
+            // Reset to normal interval after first trigger
+            rotationTimer.triggered.connect(function() {
+                if (rotationTimer.interval !== root.rotationInterval * 1000) {
+                    rotationTimer.interval = root.rotationInterval * 1000;
+                }
+            });
+        } else {
+            // Interval has passed or no quote, load fresh quote
+            rotationTimer.interval = root.rotationInterval * 1000;
             rotationTimer.restart();
         }
     }
@@ -174,8 +186,10 @@ PlasmoidItem {
     }
     
     onRotationIntervalChanged: {
-        rotationTimer.interval = rotationInterval * 1000;
-        rotationTimer.restart();
+        console.log("Rotation interval changed to:", rotationInterval, "seconds");
+        rotationTimer.stop();
+        rotationTimer.interval = root.rotationInterval * 1000;
+        rotationTimer.start();
     }
 
     // Main UI
