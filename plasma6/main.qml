@@ -13,6 +13,9 @@ PlasmoidItem {
     width: Kirigami.Units.gridUnit * 20
     height: Kirigami.Units.gridUnit * 15
 
+    // Disable Plasma's default background to allow full transparency
+    Plasmoid.backgroundHints: PlasmaCore.Types.NoBackground
+
     // Configuration properties
     property string quotesFile: plasmoid.configuration.quotesFile
     property int rotationInterval: plasmoid.configuration.rotationInterval
