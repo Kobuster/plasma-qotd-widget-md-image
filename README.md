@@ -1,6 +1,6 @@
 # Quote of the Day Plasmoid
 
-A KDE Plasma widget that displays random quotes from a directory. Supports both Plasma 5 and Plasma 6.
+A KDE Plasma widget that displays random quotes from a directory. Supports both Plasma 5 and Plasma 6.  **You can directly search for and install this widget from the KDE widget store too**
 
 I wanted something like this for a while, figured I'd just use an LLM to generate one - vibe coded with a bit of review of the shell scripts.  Does what I need it to do.  You can change the quotes file to any text file formatted as a `fortune` file.
 
