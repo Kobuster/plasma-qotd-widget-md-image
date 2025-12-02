@@ -102,6 +102,7 @@ install_plasmoid() {
     else
         cp "$SCRIPT_DIR/plasma6/metadata.json" "$INSTALL_DIR/"
         cp "$SCRIPT_DIR/plasma6/main.qml" "$INSTALL_DIR/contents/ui/"
+        cp "$SCRIPT_DIR/plasma6/FullRepresentation.qml" "$INSTALL_DIR/contents/ui/"
         cp "$SCRIPT_DIR/plasma6/config.qml" "$INSTALL_DIR/contents/config/"
         cp "$SCRIPT_DIR/plasma6/configGeneral.qml" "$INSTALL_DIR/contents/ui/"
         # Override with Plasma 6 specific config (main.xml with correct path)
