@@ -76,6 +76,7 @@ build_plasma6() {
     
     # Override with Plasma 6 specific files
     cp "$SCRIPT_DIR/plasma6/main.qml" "$pkg_dir/contents/ui/"
+    cp "$SCRIPT_DIR/plasma6/FullRepresentation.qml" "$pkg_dir/contents/ui/"
     cp "$SCRIPT_DIR/plasma6/config.qml" "$pkg_dir/contents/config/"
     cp "$SCRIPT_DIR/plasma6/configGeneral.qml" "$pkg_dir/contents/ui/"
     
