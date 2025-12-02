@@ -20,6 +20,26 @@ Item {
     // State properties
     property string currentQuote: plasmoid.configuration.currentQuote
     property var quotes: []
+    property int currentQuoteIndex: -1
+    
+    // Popup state
+    property var paginatedPages: []
+    property bool popupDataReady: false
+    property int popupInitialPage: 0
+    
+    // Helper function to get filename without path or extension
+    function getQuotesFileName() {
+        if (!quotesFile) return "Quotes";
+        var path = quotesFile.toString();
+        // Remove path
+        var filename = path.split('/').pop();
+        // Remove extension
+        var dotIndex = filename.lastIndexOf('.');
+        if (dotIndex > 0) {
+            filename = filename.substring(0, dotIndex);
+        }
+        return filename;
+    }
     
     Plasmoid.backgroundHints: PlasmaCore.Types.NoBackground
 
@@ -74,9 +94,99 @@ Item {
         }
         
         var randomIndex = Math.floor(Math.random() * quotes.length);
+        currentQuoteIndex = randomIndex;
         currentQuote = quotes[randomIndex];
         plasmoid.configuration.currentQuote = currentQuote;
         plasmoid.configuration.lastUpdateTime = Date.now();
+    }
+    
+    // Pagination functions for View in Context popup
+    function countLines(text) {
+        if (!text) return 0;
+        return text.split('\n').length;
+    }
+    
+    function truncateEntry(entry, maxLines) {
+        var lines = entry.split('\n');
+        if (lines.length <= maxLines) {
+            return entry;
+        }
+        var truncated = lines.slice(0, maxLines).join('\n');
+        return truncated + '\n...';
+    }
+    
+    function formatPage(entries) {
+        var htmlEntries = [];
+        for (var i = 0; i < entries.length; i++) {
+            var entry = entries[i];
+            var htmlEntry = entry.replace(/\n/g, '<br>');
+            htmlEntries.push(htmlEntry);
+        }
+        return htmlEntries.join('<hr style="margin: 20px 0; border: none; border-top: 2px solid #888; opacity: 0.5;">');
+    }
+    
+    // Paginate quotes and find which page contains the current quote
+    function paginateFromCurrentQuote() {
+        if (quotes.length === 0) {
+            paginatedPages = [];
+            popupDataReady = false;
+            popupInitialPage = 0;
+            return;
+        }
+        
+        var maxLinesPerPage = 45;
+        var pages = [];
+        var currentPage = [];
+        var currentLineCount = 0;
+        var pageContainingCurrentQuote = 0;
+        
+        for (var i = 0; i < quotes.length; i++) {
+            var entry = quotes[i];
+            var entryLines = countLines(entry);
+            
+            // If a single entry exceeds max lines, truncate it
+            if (entryLines > maxLinesPerPage) {
+                entry = truncateEntry(entry, maxLinesPerPage);
+                entryLines = maxLinesPerPage;
+            }
+            
+            // Check if adding this entry would exceed page limit
+            var linesNeeded = entryLines;
+            if (currentPage.length > 0) {
+                linesNeeded += 1; // Add 1 for the separator
+            }
+            
+            if (currentLineCount + linesNeeded > maxLinesPerPage && currentPage.length > 0) {
+                // Push current page and start a new one
+                pages.push(formatPage(currentPage));
+                currentPage = [entry];
+                currentLineCount = entryLines;
+            } else {
+                // Add entry to current page
+                currentPage.push(entry);
+                currentLineCount += linesNeeded;
+            }
+            
+            // Track which page contains the current quote
+            if (i === currentQuoteIndex) {
+                pageContainingCurrentQuote = pages.length; // Will be the index of the page being built
+            }
+        }
+        
+        // Don't forget the last page
+        if (currentPage.length > 0) {
+            pages.push(formatPage(currentPage));
+        }
+        
+        paginatedPages = pages;
+        popupInitialPage = pageContainingCurrentQuote;
+        popupDataReady = true;
+    }
+    
+    // Open the View in Context popup
+    function openViewInContext() {
+        paginateFromCurrentQuote();
+        contextPopup.visible = true;
     }
     
     // File reader component
@@ -147,8 +257,45 @@ Item {
             rotationTimer.restart();
         }
         
+        // Add context menu action for View in Context
+        plasmoid.setAction("viewInContext", "View in Context", "zoom-in");
+
         // Add context menu action for reloading quotes
         plasmoid.setAction("reloadQuotes", i18n("Reload Quotes from Disk"), "view-refresh");
+        
+    }
+    
+    function action_viewInContext() {
+        openViewInContext();
+    }
+    
+    // Popup dialog for View in Context
+    PlasmaCore.Dialog {
+        id: contextPopup
+        flags: Qt.Window | Qt.WindowStaysOnTopHint
+        hideOnWindowDeactivate: true
+        location: PlasmaCore.Types.Floating
+        
+        // Center on screen when visibility changes
+        onVisibleChanged: {
+            if (visible) {
+                var screenGeom = plasmoid.screenGeometry;
+                x = screenGeom.x + (screenGeom.width - mainItem.width) / 2;
+                y = screenGeom.y + (screenGeom.height - mainItem.height) / 2;
+            }
+        }
+        
+        mainItem: FullRepresentation {
+            width: Math.max(root.width, PlasmaCore.Units.gridUnit * 20)  // Use parent widget width with minimum
+            height: plasmoid.screenGeometry.height * 0.75  // 75% of screen height
+            pages: root.paginatedPages
+            dataLoaded: root.popupDataReady
+            initialPageIndex: root.popupInitialPage
+            textFont: root.textFont
+            textColor: root.textColor
+            titleText: root.getQuotesFileName()
+            onCloseRequested: contextPopup.visible = false
+        }
     }
     
     function action_reloadQuotes() {
@@ -185,6 +332,7 @@ Item {
                 id: flickable
                 anchors.fill: parent
                 anchors.margins: 10
+                anchors.bottomMargin: 30
                 contentWidth: quoteText.width
                 contentHeight: quoteText.height
                 clip: true
@@ -245,6 +393,61 @@ Item {
                         onClicked: loadRandomQuote()
                         cursorShape: Qt.PointingHandCursor
                     }
+                }
+            }
+            
+            // View in Context button
+            Text {
+                id: viewInContextButton
+                text: "..."
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: 5
+                color: textColor
+                font.family: {
+                    if (textFont) {
+                        var parts = textFont.split(",");
+                        return parts[0] || "";
+                    }
+                    return "";
+                }
+                font.pointSize: {
+                    if (textFont) {
+                        var parts = textFont.split(",");
+                        if (parts.length > 1) {
+                            return parseInt(parts[1]) || 12;
+                        }
+                    }
+                    return 12;
+                }
+                font.weight: {
+                    if (textFont) {
+                        var parts = textFont.split(",");
+                        if (parts.length > 2) {
+                            return parseInt(parts[2]) || Font.Normal;
+                        }
+                    }
+                    return Font.Normal;
+                }
+                font.italic: {
+                    if (textFont) {
+                        var parts = textFont.split(",");
+                        if (parts.length > 3) {
+                            return parts[3] === "italic";
+                        }
+                    }
+                    return false;
+                }
+                style: Text.Outline
+                styleColor: outlineColor
+                opacity: viewInContextMouseArea.containsMouse ? 1.0 : 0.6
+                
+                MouseArea {
+                    id: viewInContextMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: openViewInContext()
                 }
             }
         }
