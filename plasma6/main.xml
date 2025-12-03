@@ -37,5 +37,9 @@
     <entry name="lastUpdateTime" type="LongLong">
       <default>0</default>
     </entry>
+    <entry name="bookmarkData" type="String">
+      <label>JSON storage for bookmarks</label>
+      <default>{}</default>
+    </entry>
   </group>
 </kcfg>

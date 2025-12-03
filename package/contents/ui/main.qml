@@ -186,7 +186,12 @@ Item {
     // Open the View in Context popup
     function openViewInContext() {
         paginateFromCurrentQuote();
-        contextPopup.visible = true;
+        if (contextPopup.visible) {
+            fullRep.currentPageIndex = root.popupInitialPage;
+        } else {
+            fullRep.currentPageIndex = root.popupInitialPage;
+            contextPopup.visible = true;
+        }
     }
     
     // File reader component
@@ -286,6 +291,7 @@ Item {
         }
         
         mainItem: FullRepresentation {
+            id: fullRep
             width: Math.max(root.width, PlasmaCore.Units.gridUnit * 20)  // Use parent widget width with minimum
             height: plasmoid.screenGeometry.height * 0.75  // 75% of screen height
             pages: root.paginatedPages
@@ -294,7 +300,12 @@ Item {
             textFont: root.textFont
             textColor: root.textColor
             titleText: root.getQuotesFileName()
+            currentPath: root.quotesFile
+            bookmarkDataString: plasmoid.configuration.bookmarkData
             onCloseRequested: contextPopup.visible = false
+            onBookmarkDataStringChanged: {
+                plasmoid.configuration.bookmarkData = bookmarkDataString
+            }
         }
     }
     

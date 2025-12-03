@@ -44,6 +44,24 @@ The installer auto-detects your Plasma version and installs the widget.
 2.  **Resize and Place**: You can resize the widget by dragging its edges and move it to any position on your desktop.
 3.  **Default Settings**: The widget comes with default settings, so you can start using it right away.
 
+## Viewing Quotes in Context
+
+The widget provides a full-featured context viewer for exploring your quotes file as a collection:
+
+-   **View in Context**: Click the "View in Context" button (bottom-right of the widget) or select it from the right-click context menu to launch the full viewer. This displays the currently shown quote along with surrounding quotes from your file.
+
+<details>
+<summary>Context Viewer Features</summary>
+
+The context viewer window includes several navigation and management tools:
+
+-   **Navigation**: Use the First, Previous, Next, and Last buttons to browse through all quotes.
+-   **Jump to Page**: Enter a page number in the "Page..." field and click "Go" to jump directly to any page.
+-   **Bookmarks**: Mark your favorite quotes with custom notes (e.g., "Chapter 1", "Inspiring"), then access them anytime from the bookmarks menu. This is particularly useful when using the widget with structured content like poems or chapters rather than random quotes.
+-   **Edit File**: If you're using a custom quotes file, click the "Edit" button to open it in your default text editor. This makes it easy to add new quotes or make updates without navigating your filesystem.
+
+</details>
+
 ## Configuration
 
 If you want to customize the widget, right-click on it and select "Configure...".

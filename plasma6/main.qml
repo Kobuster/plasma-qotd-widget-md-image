@@ -270,7 +270,14 @@ PlasmoidItem {
     // Open the View in Context popup
     function openViewInContext() {
         paginateFromCurrentQuote();
-        contextPopup.visible = true;
+        if (contextPopup.visible) {
+            // If already visible, just ensure page is correct
+            fullRep.currentPageIndex = root.popupInitialPage;
+        } else {
+            // If opening, ensure page is reset
+            fullRep.currentPageIndex = root.popupInitialPage;
+            contextPopup.visible = true;
+        }
     }
 
     // Check if we should restore or refresh quote on startup
@@ -331,6 +338,7 @@ PlasmoidItem {
         }
         
         FullRepresentation {
+            id: fullRep
             anchors.fill: parent
             pages: root.paginatedPages
             dataLoaded: root.popupDataReady
@@ -338,7 +346,12 @@ PlasmoidItem {
             textFont: root.textFont
             textColor: root.textColor
             titleText: root.getQuotesFileName()
+            currentPath: root.quotesFile
+            bookmarkDataString: plasmoid.configuration.bookmarkData
             onCloseRequested: contextPopup.visible = false
+            onBookmarkDataStringChanged: {
+                plasmoid.configuration.bookmarkData = bookmarkDataString
+            }
         }
     }
 
