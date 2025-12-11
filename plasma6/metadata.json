@@ -13,9 +13,13 @@
         "Id": "org.kde.prajjwal.quotewidget",
         "License": "GPL",
         "Name": "Quote of the Day",
-        "Version": "3.4.4",
+        "ServiceTypes": [
+            "Plasma/Applet"
+        ],
+        "Version": "3.4.5",
         "Website": ""
     },
-    "X-Plasma-API-Minimum-Version": "6.0"
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
 }
-

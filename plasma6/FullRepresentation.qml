@@ -11,6 +11,9 @@ Item {
     // Signal for close button
     signal closeRequested()
     
+    // Signal for edit file request
+    signal editFileRequested(string sourcePath)
+    
     // Properties passed from main.qml
     property var pages: []
     property bool dataLoaded: false
@@ -378,12 +381,11 @@ Item {
                     id: editButton
                     icon.name: "document-edit"
                     text: "Edit"
-                    enabled: !isInternalFile
-                    PlasmaComponents.ToolTip.text: isInternalFile ? "Cannot edit default fortunes" : "Edit custom fortune file"
+                    PlasmaComponents.ToolTip.text: "Edit fortune file"
                     PlasmaComponents.ToolTip.visible: hovered
                     onClicked: {
-                        if (!isInternalFile && currentPath) {
-                            Qt.openUrlExternally(currentPath)
+                        if (currentPath) {
+                            fullRepRoot.editFileRequested(currentPath);
                         }
                     }
                 }
@@ -399,6 +401,11 @@ Item {
     // Watch for initialPageIndex changes (when popup reopens)
     onInitialPageIndexChanged: {
         currentPageIndex = initialPageIndex
+    }
+    
+    // Scroll to top when page changes
+    onCurrentPageIndexChanged: {
+        flickable.contentY = 0
     }
     
     // Bookmark Dialog

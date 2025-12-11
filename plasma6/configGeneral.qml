@@ -8,7 +8,7 @@ import org.kde.kcmutils as KCM
 KCM.SimpleKCM {
     id: generalPage
 
-    property alias cfg_quotesFile: quotesFile.text
+    property var cfg_quotesFiles: []
     property int cfg_rotationInterval
     property alias cfg_backgroundOpacity: backgroundOpacity.value
     property string cfg_textFont
@@ -16,6 +16,7 @@ KCM.SimpleKCM {
     property string cfg_textColor
     property string cfg_outlineColor
     property string cfg_backgroundColor
+    property bool cfg_debugMode
     
     // Separate time components
     property int hours: Math.floor(cfg_rotationInterval / 3600)
@@ -50,14 +51,58 @@ KCM.SimpleKCM {
     }
 
     Kirigami.FormLayout {
-        // Quotes File
-        RowLayout {
-            Kirigami.FormData.label: i18n("Quotes File:")
+        // Quotes Files List
+        ColumnLayout {
+            Kirigami.FormData.label: i18n("Quotes Files:")
+            spacing: Kirigami.Units.smallSpacing
             
-            TextField {
-                id: quotesFile
+            ListView {
+                id: filesListView
                 Layout.fillWidth: true
-                placeholderText: i18n("../quotes/inspirational_quotes.txt")
+                Layout.preferredHeight: Math.min(contentHeight, Kirigami.Units.gridUnit * 10)
+                clip: true
+                
+                model: cfg_quotesFiles
+                
+                delegate: RowLayout {
+                    width: filesListView.width
+                    spacing: Kirigami.Units.smallSpacing
+                    
+                    Label {
+                        Layout.fillWidth: true
+                        text: modelData
+                        elide: Text.ElideMiddle
+                    }
+                    
+                    Button {
+                        icon.name: "edit-delete"
+                        text: i18n("Remove")
+                        onClicked: {
+                            var newList = [];
+                            for (var i = 0; i < cfg_quotesFiles.length; i++) {
+                                if (i !== index) {
+                                    newList.push(cfg_quotesFiles[i]);
+                                }
+                            }
+                            cfg_quotesFiles = newList;
+                        }
+                    }
+                }
+                
+                Rectangle {
+                    anchors.fill: parent
+                    color: "transparent"
+                    border.color: Kirigami.Theme.disabledTextColor
+                    border.width: 1
+                    radius: 3
+                    visible: filesListView.count === 0
+                    
+                    Label {
+                        anchors.centerIn: parent
+                        text: i18n("No files selected")
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
             }
             
             Label {
@@ -82,8 +127,8 @@ KCM.SimpleKCM {
         
         RowLayout {
             Button {
-                icon.name: "document-open"
-                text: i18n("Browse...")
+                icon.name: "list-add"
+                text: i18n("Add File...")
                 onClicked: fileDialog.open()
             }
             
@@ -91,7 +136,7 @@ KCM.SimpleKCM {
                 icon.name: "edit-reset"
                 text: i18n("Reset to Default")
                 onClicked: {
-                    quotesFile.text = "../quotes/inspirational_quotes.txt";
+                    cfg_quotesFiles = ["quotes/inspirational_quotes.txt"];
                 }
             }
         }
@@ -242,17 +287,65 @@ KCM.SimpleKCM {
                 }
             }
         }
+
+        // Debug Mode
+        Kirigami.FormData.isSection: true
+        
+        RowLayout {
+            Kirigami.FormData.label: i18n("Debug:")
+            
+            CheckBox {
+                id: debugModeCheckBox
+                text: i18n("Enable Debug Mode")
+                checked: cfg_debugMode
+                onCheckedChanged: cfg_debugMode = checked
+            }
+            
+            Label {
+                text: i18n("(Check logs in journalctl)")
+                color: Kirigami.Theme.disabledTextColor
+                font.italic: true
+            }
+        }
+        
+        Label {
+            text: i18n("Warning: Debug mode generates verbose logs. Only enable for troubleshooting.")
+            color: Kirigami.Theme.negativeTextColor
+            visible: debugModeCheckBox.checked
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
     }
 
-    // File Dialog
+    // File Dialog - Allow multiple file selection
     FileDialog {
         id: fileDialog
-        title: i18n("Select Quotes File")
-        fileMode: FileDialog.OpenFile
+        title: i18n("Select Quotes Files")
+        fileMode: FileDialog.OpenFiles  // Multiple files
         nameFilters: ["Text files (*.txt)", "All files (*)"]
         currentFolder: "file://~"
         onAccepted: {
-            quotesFile.text = fileDialog.selectedFile.toString().replace("file://", "");
+            var newFiles = [];
+            for (var i = 0; i < fileDialog.selectedFiles.length; i++) {
+                var filePath = fileDialog.selectedFiles[i].toString().replace("file://", "");
+                // Add if not already in list
+                var alreadyExists = false;
+                for (var j = 0; j < cfg_quotesFiles.length; j++) {
+                    if (cfg_quotesFiles[j] === filePath) {
+                        alreadyExists = true;
+                        break;
+                    }
+                }
+                if (!alreadyExists) {
+                    newFiles.push(filePath);
+                }
+            }
+            // Append new files to existing list
+            var combinedList = cfg_quotesFiles.slice();
+            for (var i = 0; i < newFiles.length; i++) {
+                combinedList.push(newFiles[i]);
+            }
+            cfg_quotesFiles = combinedList;
         }
     }
 

@@ -10,6 +10,7 @@ Item {
     
     // Signal for close button
     signal closeRequested()
+    signal editFileRequested(string sourcePath)
     
     // Properties passed from main.qml
     property var pages: []
@@ -31,9 +32,13 @@ Item {
     
     // Read-only detection for edit button
     function checkIsInternal() {
-        return currentPath.indexOf("contents/common") !== -1 
-               || currentPath.indexOf("/usr/share/plasma") !== -1
-               || currentPath.indexOf(".local/share/plasma/plasmoids") !== -1;
+        if (!currentPath) return false;
+        var path = currentPath.toString();
+        return path.indexOf("contents/common") !== -1 
+               || path.indexOf("/usr/share/plasma") !== -1
+               || path.indexOf(".local/share/plasma/plasmoids") !== -1
+               || path.indexOf("quotes/") !== -1  // Widget's quotes directory
+               || (!path.startsWith("/") && !path.startsWith("~"));  // Relative paths
     }
     
     property bool isInternalFile: checkIsInternal()
@@ -393,11 +398,10 @@ Item {
                     id: editButton
                     iconSource: "document-edit"
                     text: "Edit"
-                    enabled: !isInternalFile
-                    tooltip: isInternalFile ? "Cannot edit default fortunes" : "Edit custom fortune file"
+                    tooltip: isInternalFile ? "Edit (will copy to ~/Documents/Quotes/)" : "Edit custom fortune file"
                     onClicked: {
-                        if (!isInternalFile && currentPath) {
-                            Qt.openUrlExternally(currentPath)
+                        if (currentPath) {
+                            editFileRequested(currentPath);
                         }
                     }
                 }
@@ -413,6 +417,11 @@ Item {
     // Watch for initialPageIndex changes (when popup reopens)
     onInitialPageIndexChanged: {
         currentPageIndex = initialPageIndex
+    }
+    
+    // Scroll to top when page changes
+    onCurrentPageIndexChanged: {
+        flickable.contentY = 0
     }
     
     // Bookmark Dialog

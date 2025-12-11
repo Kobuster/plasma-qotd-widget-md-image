@@ -7,7 +7,7 @@ import org.kde.kirigami 2.5 as Kirigami
 Kirigami.FormLayout {
     id: generalPage
 
-    property alias cfg_quotesFile: quotesFile.text
+    property var cfg_quotesFiles: []
     property int cfg_rotationInterval
     property alias cfg_backgroundOpacity: backgroundOpacity.value
     property string cfg_textFont
@@ -15,6 +15,7 @@ Kirigami.FormLayout {
     property string cfg_textColor
     property string cfg_outlineColor
     property string cfg_backgroundColor
+    property bool cfg_debugMode
     
     // Separate time components
     property int hours: Math.floor(cfg_rotationInterval / 3600)
@@ -48,14 +49,56 @@ Kirigami.FormLayout {
         }
     }
 
-    // Quotes File
-    RowLayout {
-        Kirigami.FormData.label: i18n("Quotes File:")
+    // Quotes Files
+    ColumnLayout {
+        Kirigami.FormData.label: i18n("Quotes Files:")
+        Layout.fillWidth: true
         
-        TextField {
-            id: quotesFile
+        Rectangle {
             Layout.fillWidth: true
-            placeholderText: i18n("quotes/inspirational_quotes.txt")
+            Layout.preferredHeight: 80  // Approximately 3 lines
+            border.color: Kirigami.Theme.textColor
+            border.width: 1
+            color: "transparent"
+            
+            ScrollView {
+                anchors.fill: parent
+                anchors.margins: 2
+                
+                ListView {
+                    id: filesListView
+                    model: cfg_quotesFiles
+                    clip: true
+                    spacing: 2  // Reduce whitespace between items
+                    
+                    delegate: RowLayout {
+                        width: filesListView.width
+                        spacing: 5
+                        
+                        Label {
+                            Layout.fillWidth: true
+                            text: {
+                                var path = modelData.toString();
+                                return path.split('/').pop();  // Show basename
+                            }
+                            elide: Text.ElideMiddle
+                        }
+                        
+                        Button {
+                            icon.name: "list-remove"
+                            onClicked: {
+                                var newList = [];
+                                for (var i = 0; i < cfg_quotesFiles.length; i++) {
+                                    if (i !== index) {
+                                        newList.push(cfg_quotesFiles[i]);
+                                    }
+                                }
+                                cfg_quotesFiles = newList;
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         Label {
@@ -81,8 +124,8 @@ Kirigami.FormLayout {
     RowLayout {
         
         Button {
-            icon.name: "document-open"
-            text: i18n("Browse...")
+            icon.name: "list-add"
+            text: i18n("Add Files...")
             onClicked: fileDialog.open()
         }
         
@@ -90,7 +133,7 @@ Kirigami.FormLayout {
             icon.name: "edit-reset"
             text: i18n("Reset to Default")
             onClicked: {
-                quotesFile.text = "quotes/inspirational_quotes.txt";
+                cfg_quotesFiles = ["quotes/inspirational_quotes.txt"];
             }
         }
     }
@@ -242,15 +285,59 @@ Kirigami.FormLayout {
         }
     }
 
+    // Debug Mode
+    RowLayout {
+        CheckBox {
+            id: debugModeCheckBox
+            text: i18n("Enable Debug Mode")
+            checked: cfg_debugMode
+            onCheckedChanged: cfg_debugMode = checked
+        }
+        
+        Label {
+            text: i18n("(Check logs in journalctl)")
+            color: Kirigami.Theme.disabledTextColor
+            font.italic: true
+        }
+    }
+    
+    Label {
+        text: i18n("Warning: Debug mode generates verbose logs. Only enable for troubleshooting.")
+        color: Kirigami.Theme.negativeTextColor
+        visible: debugModeCheckBox.checked
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
+    }
+
     // File Dialog
     FileDialog {
         id: fileDialog
-        title: i18n("Select Quotes File")
+        title: i18n("Select Quotes Files (Ctrl+Click or Shift+Click for multiple)")
         selectFolder: false
+        selectMultiple: true
         nameFilters: ["Text files (*.txt)", "All files (*)"]
         folder: "file://~"
         onAccepted: {
-            quotesFile.text = fileDialog.fileUrl.toString().replace("file://", "");
+            console.log("File dialog accepted, selected files:", fileDialog.fileUrls.length);
+            var newList = [];
+            
+            // Copy existing files
+            for (var j = 0; j < cfg_quotesFiles.length; j++) {
+                newList.push(cfg_quotesFiles[j]);
+            }
+            
+            // Add new files
+            for (var i = 0; i < fileDialog.fileUrls.length; i++) {
+                var filePath = fileDialog.fileUrls[i].toString().replace("file://", "");
+                console.log("Adding file:", filePath);
+                // Avoid duplicates
+                if (newList.indexOf(filePath) === -1) {
+                    newList.push(filePath);
+                }
+            }
+            
+            console.log("Final list length:", newList.length);
+            cfg_quotesFiles = newList;
         }
     }
 

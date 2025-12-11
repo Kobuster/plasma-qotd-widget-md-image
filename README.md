@@ -36,6 +36,12 @@ I wanted something like this for a while, figured I'd just use an LLM to generat
 
 The installer auto-detects your Plasma version and installs the widget.
 
+**Note for Plasma 6 users**: If you're manually installing the `.plasmoid` file using `kpackagetool6`, you **must** specify the package type:
+```bash
+kpackagetool6 -t Plasma/Applet -i org.kde.prajjwal.quotewidget-plasma6.plasmoid
+```
+See [PLASMA6_INSTALLATION.md](PLASMA6_INSTALLATION.md) for more details.
+
 </details>
 
 ## Usage

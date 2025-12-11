@@ -9,18 +9,28 @@ Item {
     id: root
 
     // Configuration properties
-    property string quotesFile: plasmoid.configuration.quotesFile
+    property var quotesFiles: plasmoid.configuration.quotesFiles
     property int rotationInterval: plasmoid.configuration.rotationInterval
     property real backgroundOpacity: plasmoid.configuration.backgroundOpacity
     property color textColor: plasmoid.configuration.textColor
     property color outlineColor: plasmoid.configuration.outlineColor
     property color backgroundColor: plasmoid.configuration.backgroundColor
     property string textFont: plasmoid.configuration.textFont
+    property bool debugMode: plasmoid.configuration.debugMode
+    
+    // Debug logging helper
+    function log() {
+        if (debugMode) {
+            var args = Array.prototype.slice.call(arguments);
+            console.log.apply(console, args);
+        }
+    }
     
     // State properties
     property string currentQuote: plasmoid.configuration.currentQuote
-    property var quotes: []
-    property int currentQuoteIndex: -1
+    property var quotes: []  // Array of {text: string, sourceFile: string, sourceIndex: int}
+    property int currentQuoteIndex: plasmoid.configuration.currentQuoteIndex
+    property string currentQuoteSourceFile: plasmoid.configuration.currentQuoteSourceFile
     
     // Popup state
     property var paginatedPages: []
@@ -29,11 +39,18 @@ Item {
     
     // Helper function to get filename without path or extension
     function getQuotesFileName() {
-        if (!quotesFile) return "Quotes";
-        var path = quotesFile.toString();
-        // Remove path
+        if (!currentQuoteSourceFile) {
+            if (!quotesFiles || quotesFiles.length === 0) return "Quotes";
+            var path = quotesFiles[0].toString();
+            var filename = path.split('/').pop();
+            var dotIndex = filename.lastIndexOf('.');
+            if (dotIndex > 0) {
+                filename = filename.substring(0, dotIndex);
+            }
+            return filename;
+        }
+        var path = currentQuoteSourceFile.toString();
         var filename = path.split('/').pop();
-        // Remove extension
         var dotIndex = filename.lastIndexOf('.');
         if (dotIndex > 0) {
             filename = filename.substring(0, dotIndex);
@@ -52,52 +69,94 @@ Item {
         onTriggered: loadRandomQuote()
     }
 
-    // Load and parse fortune file
+    // Load and parse fortune files
+    property int filesLoaded: 0
+    property int filesToLoad: 0
+    property var tempQuotes: []
+    
     function loadFortuneFile(forceReload) {
-        if (!quotesFile) {
+        if (!quotesFiles || quotesFiles.length === 0) {
             currentQuote = i18n("No quotes file configured.\n\nPlease select a file in settings.");
             return;
         }
         
-        var filePath = quotesFile;
+        log("loadFortuneFile: Loading", quotesFiles.length, "files");
         
-        // If relative path, resolve to plasmoid directory
-        if (!filePath.startsWith("/") && !filePath.startsWith("~") && !filePath.startsWith("file://")) {
-            filePath = Qt.resolvedUrl("../../" + filePath).toString();
-        } else {
-            if (filePath.startsWith("~/")) {
-                filePath = filePath.replace("~", StandardPaths.writableLocation(StandardPaths.HomeLocation));
+        // Reset loading state
+        filesLoaded = 0;
+        filesToLoad = quotesFiles.length;
+        tempQuotes = [];
+        
+        // Collect all commands to run simultaneously
+        var commands = [];
+        var timestamp = Date.now(); // Use timestamp to force unique commands
+        
+        for (var i = 0; i < quotesFiles.length; i++) {
+            var filePath = quotesFiles[i];
+            if (!filePath) continue;
+            
+            // If relative path, resolve to plasmoid directory
+            if (!filePath.startsWith("/") && !filePath.startsWith("~") && !filePath.startsWith("file://")) {
+                filePath = Qt.resolvedUrl("../../" + filePath).toString();
+            } else {
+                if (filePath.startsWith("~/")) {
+                    filePath = filePath.replace("~", StandardPaths.writableLocation(StandardPaths.HomeLocation));
+                }
+                if (!filePath.startsWith("file://")) {
+                    filePath = "file://" + filePath;
+                }
             }
-            if (!filePath.startsWith("file://")) {
-                filePath = "file://" + filePath;
-            }
+            
+            var cleanPath = filePath.toString().replace("file://", "");
+            log("Preparing to load file", i, ":", cleanPath);
+            
+            // Create a unique command that includes the original path in a comment
+            // We append a timestamp to the FILE marker to make the command unique every time
+            // This ensures DataSource sees it as a new source and executes it
+            var command = "echo 'FILE:" + quotesFiles[i] + ":" + timestamp + "' && head -n 10000 '" + cleanPath + "'";
+            commands.push(command);
         }
         
-        if (forceReload) {
-            // Force reload by disconnecting first, then setting new source
-            if (fileReader.source) {
-                var oldSource = fileReader.source;
-                var oldFilePath = oldSource.toString().replace("file://", "");
-                var oldCommand = "if file -b --mime-type '" + oldFilePath + "' | grep -q '^text/'; then head -n 10000 '" + oldFilePath + "'; else echo 'BINARY_FILE_ERROR'; fi";
-                fileReader.disconnectSource(oldCommand);
-            }
+        // Set all commands at once
+        if (commands.length > 0) {
+            log("Starting to load", commands.length, "files simultaneously");
+            fileReader.connectedSources = commands;
         }
-        
-        fileReader.source = filePath;
     }
+    
+
 
     // Load a random quote from parsed quotes
     function loadRandomQuote() {
+        log("loadRandomQuote called, quotes.length:", quotes.length);
         if (quotes.length === 0) {
+            // Check if files are currently being loaded
+            if (filesLoaded < filesToLoad && filesToLoad > 0) {
+                log("Files are still loading, waiting...");
+                return;
+            }
+            log("No quotes loaded, calling loadFortuneFile");
             loadFortuneFile();
             return;
         }
         
         var randomIndex = Math.floor(Math.random() * quotes.length);
+        log("Selected random index:", randomIndex, "current index:", currentQuoteIndex);
         currentQuoteIndex = randomIndex;
-        currentQuote = quotes[randomIndex];
+        currentQuote = quotes[randomIndex].text;
+        currentQuoteSourceFile = quotes[randomIndex].sourceFile;
+        log("New quote set, first 50 chars:", currentQuote.substring(0, 50));
+        
+        // Persist to configuration
         plasmoid.configuration.currentQuote = currentQuote;
+        plasmoid.configuration.currentQuoteIndex = currentQuoteIndex;
+        plasmoid.configuration.currentQuoteSourceFile = currentQuoteSourceFile;
         plasmoid.configuration.lastUpdateTime = Date.now();
+        
+        // Reset timer to full interval
+        rotationTimer.stop();
+        rotationTimer.interval = root.rotationInterval * 1000;
+        rotationTimer.start();
     }
     
     // Pagination functions for View in Context popup
@@ -134,14 +193,34 @@ Item {
             return;
         }
         
+        // Filter quotes to only show those from the current source file
+        var filteredQuotes = [];
+        var currentQuoteIndexInFiltered = -1;
+        
+        for (var i = 0; i < quotes.length; i++) {
+            if (quotes[i].sourceFile === currentQuoteSourceFile) {
+                filteredQuotes.push(quotes[i].text);
+                if (i === currentQuoteIndex) {
+                    currentQuoteIndexInFiltered = filteredQuotes.length - 1;
+                }
+            }
+        }
+        
+        if (filteredQuotes.length === 0) {
+            paginatedPages = [];
+            popupDataReady = false;
+            popupInitialPage = 0;
+            return;
+        }
+        
         var maxLinesPerPage = 45;
         var pages = [];
         var currentPage = [];
         var currentLineCount = 0;
         var pageContainingCurrentQuote = 0;
         
-        for (var i = 0; i < quotes.length; i++) {
-            var entry = quotes[i];
+        for (var i = 0; i < filteredQuotes.length; i++) {
+            var entry = filteredQuotes[i];
             var entryLines = countLines(entry);
             
             // If a single entry exceeds max lines, truncate it
@@ -168,7 +247,7 @@ Item {
             }
             
             // Track which page contains the current quote
-            if (i === currentQuoteIndex) {
+            if (i === currentQuoteIndexInFiltered) {
                 pageContainingCurrentQuote = pages.length; // Will be the index of the page being built
             }
         }
@@ -198,54 +277,108 @@ Item {
     PlasmaCore.DataSource {
         id: fileReader
         engine: "executable"
-        property string source: ""
-        
-        onSourceChanged: {
-            if (source) {
-                var filePath = source.toString().replace("file://", "");
-                // First check if file is text using 'file' utility, then read up to 10000 lines
-                connectedSources = ["if file -b --mime-type '" + filePath + "' | grep -q '^text/'; then head -n 10000 '" + filePath + "'; else echo 'BINARY_FILE_ERROR'; fi"];
-            }
-        }
         
         onNewData: {
+            log("fileReader onNewData for source:", sourceName);
+            log("  exit code:", data["exit code"]);
+            
             if (data["exit code"] === 0) {
                 var content = data.stdout;
+                log("  content length:", content.length);
                 
-                // Check for binary file error
-                if (content.indexOf("BINARY_FILE_ERROR") === 0) {
-                    currentQuote = i18n("Error: Selected file appears to be binary.\n\nPlease select a text file.");
-                    disconnectSource(sourceName);
-                    return;
+                // Extract the original file path from the output
+                var originalPath = "";
+                var fileContent = content;
+                
+                if (content.startsWith("FILE:")) {
+                    var firstNewline = content.indexOf("\n");
+                    if (firstNewline > 0) {
+                        var rawPath = content.substring(5, firstNewline);
+                        // Remove timestamp suffix (format: path:timestamp)
+                        var lastColon = rawPath.lastIndexOf(":");
+                        if (lastColon > 0) {
+                            originalPath = rawPath.substring(0, lastColon);
+                        } else {
+                            originalPath = rawPath;
+                        }
+                        fileContent = content.substring(firstNewline + 1);
+                    }
                 }
                 
+                log("  original path:", originalPath);
+                
                 // Parse fortune file format (quotes separated by %)
-                quotes = content.split(/\n%\n/).map(function(q) { 
+                var fileQuotes = fileContent.split(/\n%\n/).map(function(q) { 
                     return q.trim(); 
                 }).filter(function(q) { 
                     return q.length > 0; 
                 });
                 
-                if (quotes.length > 0) {
-                    loadRandomQuote();
+                log("  parsed", fileQuotes.length, "quotes");
+                
+                // Add quotes with source tracking
+                for (var i = 0; i < fileQuotes.length; i++) {
+                    tempQuotes.push({
+                        text: fileQuotes[i],
+                        sourceFile: originalPath,
+                        sourceIndex: i
+                    });
+                }
+                
+                filesLoaded++;
+                log("  filesLoaded:", filesLoaded, "/", filesToLoad);
+                checkAllFilesLoaded();
+            } else {
+                log("  error loading, stderr:", data.stderr);
+                filesLoaded++;
+                checkAllFilesLoaded();
+            }
+            // Don't manually disconnect - let DataSource handle it
+        }
+    }
+    
+    function checkAllFilesLoaded() {
+        log("checkAllFilesLoaded:", filesLoaded, "/", filesToLoad);
+        if (filesLoaded >= filesToLoad) {
+            // All files loaded, update quotes array
+            quotes = tempQuotes;
+            log("All files loaded! Total quotes:", quotes.length);
+            
+            if (quotes.length > 0) {
+                // Check if we should restore a previous quote
+                if (currentQuoteIndex >= 0 && currentQuoteIndex < quotes.length) {
+                    // Restore the quote
+                    log("Restoring previous quote at index:", currentQuoteIndex);
+                    currentQuote = quotes[currentQuoteIndex].text;
+                    currentQuoteSourceFile = quotes[currentQuoteIndex].sourceFile;
                 } else {
-                    currentQuote = i18n("No quotes found in file.\n\nExpected format: quotes separated by % on its own line");
+                    // Load a random quote
+                    log("Loading random quote (no valid previous index)");
+                    loadRandomQuote();
                 }
             } else {
-                currentQuote = i18n("Error loading file:\n%1", source.replace("file://", ""));
+                currentQuote = i18n("No quotes found in files.\n\nExpected format: quotes separated by % on its own line");
             }
-            disconnectSource(sourceName);
         }
     }
 
     // Check if we should restore or refresh quote on startup
     Component.onCompleted: {
+        // Migrate old configuration if needed
+        var oldQuotesFile = plasmoid.configuration.quotesFile;
+        if (oldQuotesFile && oldQuotesFile.length > 0) {
+            log("Migrating old quotesFile config:", oldQuotesFile);
+            plasmoid.configuration.quotesFiles = [oldQuotesFile];
+            plasmoid.configuration.quotesFile = "";  // Clear old config
+            quotesFiles = plasmoid.configuration.quotesFiles;
+        }
+        
         loadFortuneFile();
         
         var timeSinceUpdate = Date.now() - plasmoid.configuration.lastUpdateTime;
         var intervalMs = root.rotationInterval * 1000;
         
-        if (currentQuote && timeSinceUpdate < intervalMs) {
+        if (currentQuote && timeSinceUpdate < intervalMs && currentQuoteIndex >= 0) {
             // Quote is still fresh, keep it and adjust timer
             var remainingTime = intervalMs - timeSinceUpdate;
             rotationTimer.interval = remainingTime;
@@ -300,33 +433,122 @@ Item {
             textFont: root.textFont
             textColor: root.textColor
             titleText: root.getQuotesFileName()
-            currentPath: root.quotesFile
+            currentPath: root.currentQuoteSourceFile
             bookmarkDataString: plasmoid.configuration.bookmarkData
             onCloseRequested: contextPopup.visible = false
             onBookmarkDataStringChanged: {
                 plasmoid.configuration.bookmarkData = bookmarkDataString
             }
+            onEditFileRequested: {
+                handleEditFile(sourcePath);
+            }
+        }
+    }
+    
+    // File copying for default quotes
+    PlasmaCore.DataSource {
+        id: fileCopier
+        engine: "executable"
+        property string targetPath: ""
+        property string originalPath: ""
+        property string resolvedSourcePath: ""
+        property bool needsCopy: false
+        
+        onNewData: {
+            if (data["exit code"] === 0) {
+                if (needsCopy) {
+                    // Directory created, now copy the file
+                    needsCopy = false;
+                    connectedSources = ["cp '" + resolvedSourcePath + "' '" + targetPath + "'"];
+                } else {
+                    // File copied successfully
+                    log("Copied file to:", targetPath);
+                    // Update configuration to use the copied file
+                    var newList = [];
+                    for (var i = 0; i < quotesFiles.length; i++) {
+                        if (quotesFiles[i] === originalPath) {
+                            newList.push(targetPath);
+                        } else {
+                            newList.push(quotesFiles[i]);
+                        }
+                    }
+                    plasmoid.configuration.quotesFiles = newList;
+                    quotesFiles = newList;
+                    
+                    // Reload quotes
+                    loadFortuneFile(true);
+                    
+                    // Open the copied file
+                    Qt.openUrlExternally("file://" + targetPath);
+                }
+            } else {
+                log("Error executing command:", data.stderr);
+            }
+            // Don't manually disconnect - let DataSource handle it
+        }
+    }
+    
+    function handleEditFile(sourcePath) {
+        if (!sourcePath) return;
+        
+        var path = sourcePath.toString();
+        
+        // Check if it's an internal/default file
+        var isInternal = path.indexOf("contents/common") !== -1 
+                      || path.indexOf("/usr/share/plasma") !== -1
+                      || path.indexOf(".local/share/plasma/plasmoids") !== -1
+                      || path.indexOf("quotes/") !== -1
+                      || (!path.startsWith("/") && !path.startsWith("~"));
+        
+        if (isInternal) {
+            // Need to copy to ~/Documents/Quotes/
+            var filename = path.split('/').pop();
+            var targetPath = StandardPaths.writableLocation(StandardPaths.HomeLocation) + "/Documents/Quotes/" + filename;
+            
+            // Resolve source path if relative
+            var resolvedSource = path;
+            if (!resolvedSource.startsWith("/") && !resolvedSource.startsWith("~") && !resolvedSource.startsWith("file://")) {
+                resolvedSource = Qt.resolvedUrl("../../" + resolvedSource).toString().replace("file://", "");
+            } else if (resolvedSource.startsWith("~/")) {
+                resolvedSource = resolvedSource.replace("~", StandardPaths.writableLocation(StandardPaths.HomeLocation));
+            } else if (resolvedSource.startsWith("file://")) {
+                resolvedSource = resolvedSource.replace("file://", "");
+            }
+            
+            // Set up for copy operation
+            fileCopier.targetPath = targetPath;
+            fileCopier.originalPath = path;
+            fileCopier.resolvedSourcePath = resolvedSource;
+            fileCopier.needsCopy = true;
+            
+            // First create the directory
+            fileCopier.connectedSources = ["mkdir -p ~/Documents/Quotes"];
+        } else {
+            // Just open the file
+            var openPath = path;
+            if (!openPath.startsWith("file://")) {
+                openPath = "file://" + openPath;
+            }
+            Qt.openUrlExternally(openPath);
         }
     }
     
     function action_reloadQuotes() {
         console.log("Reloading quotes from disk...");
-        quotes = [];  // Clear existing quotes
-        // Force reload by clearing the source first, then reloading
-        fileReader.source = "";
-        loadFortuneFile(true);  // Reload from file with force flag
+        log("Reloading quotes from disk...");
+        loadFortuneFile(true);
     }
 
     // Watch for configuration changes
-    onQuotesFileChanged: {
+    onQuotesFilesChanged: {
         loadFortuneFile();
     }
     
+    // Watch for rotation interval changes
     onRotationIntervalChanged: {
-        console.log("Rotation interval changed to:", rotationInterval, "seconds");
-        rotationTimer.stop();
-        rotationTimer.interval = root.rotationInterval * 1000;
-        rotationTimer.start();
+        log("Rotation interval changed to:", rotationInterval, "seconds");
+        rotationTimer.interval = rotationInterval * 1000;
+        rotationTimer.restart();
     }
 
     // Main UI
@@ -395,13 +617,18 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     
+                    lineHeight: 0.8
+                    
                     style: Text.Outline
                     styleColor: outlineColor
                     
                     // Click to advance
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: loadRandomQuote()
+                        onClicked: {
+                            log("Quote text clicked!");
+                            loadRandomQuote();
+                        }
                         cursorShape: Qt.PointingHandCursor
                     }
                 }

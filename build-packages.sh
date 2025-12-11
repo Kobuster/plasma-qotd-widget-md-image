@@ -90,9 +90,9 @@ build_plasma6() {
         cp -r "$SCRIPT_DIR/quotes" "$pkg_dir/"
     fi
     
-    # Create .plasmoid archive
-    cd "$BUILD_DIR/plasma6"
-    zip -r "$BUILD_DIR/${PLUGIN_ID}-plasma6.plasmoid" "$PLUGIN_ID"
+    # Create .plasmoid archive - zip from inside the directory so metadata.json is at root
+    cd "$pkg_dir"
+    zip -r "$BUILD_DIR/${PLUGIN_ID}-plasma6.plasmoid" .
     cd "$SCRIPT_DIR"
     
     log_success "Plasma 6 package created: ${PLUGIN_ID}-plasma6.plasmoid"
@@ -135,7 +135,7 @@ main() {
     echo ""
     echo "To install manually:"
     echo "  Plasma 5: kpackagetool5 -i ${PLUGIN_ID}-plasma5.plasmoid"
-    echo "  Plasma 6: kpackagetool6 -i ${PLUGIN_ID}-plasma6.plasmoid"
+    echo "  Plasma 6: kpackagetool6 -t Plasma/Applet -i ${PLUGIN_ID}-plasma6.plasmoid"
     echo ""
     echo "To upload to KDE Store (store.kde.org):"
     echo "  1. Create an account at https://store.kde.org"

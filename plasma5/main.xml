@@ -6,8 +6,11 @@
   <kcfgfile name="plasma-org.kde.prajjwal.quotewidget-$plasmoidId-appletsrc"/>
 
   <group name="General">
-    <entry name="quotesFile" type="String">
+    <entry name="quotesFiles" type="StringList">
       <default>quotes/inspirational_quotes.txt</default>
+    </entry>
+    <entry name="quotesFile" type="String">
+      <default></default>
     </entry>
     <entry name="rotationInterval" type="Int">
       <default>120</default>
@@ -37,9 +40,19 @@
     <entry name="lastUpdateTime" type="LongLong">
       <default>0</default>
     </entry>
+    <entry name="currentQuoteIndex" type="Int">
+      <default>-1</default>
+    </entry>
+    <entry name="currentQuoteSourceFile" type="String">
+      <default></default>
+    </entry>
     <entry name="bookmarkData" type="String">
       <label>JSON storage for bookmarks</label>
       <default>{}</default>
+    </entry>
+    <entry name="debugMode" type="Bool">
+      <label>Enable debug mode logging</label>
+      <default>false</default>
     </entry>
   </group>
 </kcfg>
