@@ -1,6 +1,6 @@
 # Creating Your Own Fortune File
 
-This guide will walk you through creating a custom quotes file for the "Quote of the Day" Plasmoid. The widget uses the `fortune` file format, which is a simple text-based format for storing a collection of quotes.
+This guide will walk you through creating a custom quotes file for the Note Shuffle widget. The widget uses the `fortune` file format, which is a simple text-based format for storing a collection of quotes.
 
 ## Basic File Format
 
@@ -50,7 +50,7 @@ It is not in the stars to hold our destiny but in ourselves.
 
 You can save this file anywhere on your system. For example, you could save it in your Documents folder as `~/Documents/Quotes/myquotes.txt`.
 
-Once you have your file saved, right-click on the "Quote of the Day" widget on your desktop, select "Configure...", and in the "Content Settings", you can browse to and select your custom quotes file.
+Once you have your file saved, right-click on the Note Shuffle widget on your desktop, select "Configure...", and in the "Content Settings", you can browse to and select your custom quotes file.
 
 **Pro-Tip:** If you edit your quote file while the widget is running, you can right-click on the widget and select "Reload Quotes" to see your changes immediately.
 

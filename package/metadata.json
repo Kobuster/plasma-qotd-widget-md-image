@@ -1,0 +1,29 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "",
+                "Name": "Kobuster"
+            },
+            {
+                "Email": "",
+                "Name": "Prajjwal Devkota (original Quote of the Day widget)"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "Shows random Markdown notes with their images, or quotes from fortune files, from chosen folders and files",
+        "Icon": "text-speak",
+        "Id": "com.github.kobuster.noteshuffle",
+        "License": "GPL-3.0",
+        "Name": "Note Shuffle",
+        "ServiceTypes": [
+            "Plasma/Applet"
+        ],
+        "Version": "0.1.0",
+        "Website": "https://github.com/Kobuster/plasma-qotd-widget-md-image"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

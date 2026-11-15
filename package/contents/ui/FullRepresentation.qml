@@ -1,15 +1,17 @@
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Controls 2.15
-import org.kde.plasma.components 2.0 as PlasmaComponents
-import org.kde.plasma.extras 2.0 as PlasmaExtras
-import org.kde.plasma.core 2.0 as PlasmaCore
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import org.kde.plasma.components as PlasmaComponents
+import org.kde.plasma.extras as PlasmaExtras
+import org.kde.kirigami as Kirigami
 
 Item {
     id: fullRepRoot
     
     // Signal for close button
     signal closeRequested()
+    
+    // Signal for edit file request
     signal editFileRequested(string sourcePath)
     
     // Properties passed from main.qml
@@ -32,13 +34,9 @@ Item {
     
     // Read-only detection for edit button
     function checkIsInternal() {
-        if (!currentPath) return false;
-        var path = currentPath.toString();
-        return path.indexOf("contents/common") !== -1 
-               || path.indexOf("/usr/share/plasma") !== -1
-               || path.indexOf(".local/share/plasma/plasmoids") !== -1
-               || path.indexOf("quotes/") !== -1  // Widget's quotes directory
-               || (!path.startsWith("/") && !path.startsWith("~"));  // Relative paths
+        return currentPath.indexOf("contents/common") !== -1 
+               || currentPath.indexOf("/usr/share/plasma") !== -1
+               || currentPath.indexOf(".local/share/plasma/plasmoids") !== -1;
     }
     
     property bool isInternalFile: checkIsInternal()
@@ -95,16 +93,16 @@ Item {
     }
     
     // Set minimum dimensions (used when in layout contexts)
-    Layout.minimumWidth: PlasmaCore.Units.gridUnit * 20
-    Layout.minimumHeight: PlasmaCore.Units.gridUnit * 25
+    Layout.minimumWidth: Kirigami.Units.gridUnit * 20
+    Layout.minimumHeight: Kirigami.Units.gridUnit * 25
     Layout.preferredWidth: width
     Layout.preferredHeight: height
     
     // Background
     Rectangle {
         anchors.fill: parent
-        color: PlasmaCore.Theme.backgroundColor
-        border.color: PlasmaCore.Theme.textColor
+        color: Kirigami.Theme.backgroundColor
+        border.color: Kirigami.Theme.textColor
         border.width: 1
         opacity: 0.95
     }
@@ -112,13 +110,13 @@ Item {
     // Main layout
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: PlasmaCore.Units.smallSpacing
-        spacing: PlasmaCore.Units.smallSpacing
+        anchors.margins: Kirigami.Units.smallSpacing
+        spacing: Kirigami.Units.smallSpacing
         
         // Header with title and bookmark controls
         RowLayout {
             Layout.fillWidth: true
-            spacing: PlasmaCore.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
             
             PlasmaExtras.Heading {
                 id: header
@@ -134,76 +132,67 @@ Item {
             
             // Bookmark controls
             RowLayout {
-                spacing: PlasmaCore.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
                 
                 PlasmaComponents.ToolButton {
                     id: bookmarkToggle
                     property var activeBookmark: getCurrentBookmark()
-                    iconSource: activeBookmark ? "rating" : "rating-unrated"
-                    tooltip: activeBookmark ? "Remove bookmark" : "Add bookmark"
+                    icon.name: activeBookmark ? "rating" : "rating-unrated"
+                    PlasmaComponents.ToolTip.text: activeBookmark ? "Remove bookmark" : "Add bookmark"
+                    PlasmaComponents.ToolTip.visible: hovered
                     onClicked: {
                         if (activeBookmark) {
                             // It exists, so this click means REMOVE
                             removeBookmark();
                         } else {
                             // It doesn't exist, so this click means ADD
-                            bookmarkDialog.visible = true;
+                            bookmarkDialog.open();
                         }
                     }
                 }
                 
-                
                 PlasmaComponents.ToolButton {
                     id: viewBookmarksButton
-                    iconSource: "bookmarks"
-                    tooltip: "View bookmarks"
-                    onClicked: {
-                        // Clear existing menu items
-                        bookmarksMenu.clearMenuItems();
-                        
-                        // Populate menu with bookmarks
-                        var list = bookmarkCache[currentPath];
-                        if (list && list.length > 0) {
-                            for (var i = 0; i < list.length; i++) {
-                                var bookmark = list[i];
-                                var menuItem = bookmarkMenuItemComponent.createObject(bookmarksMenu, {
-                                    "text": bookmark.note + " (Pg " + (bookmark.page + 1) + ")",
-                                    "pageIndex": bookmark.page
-                                });
-                                bookmarksMenu.addMenuItem(menuItem);
-                            }
-                        } else {
-                            var emptyItem = bookmarkMenuItemComponent.createObject(bookmarksMenu, {
-                                "text": "No bookmarks",
-                                "enabled": false
-                            });
-                            bookmarksMenu.addMenuItem(emptyItem);
-                        }
-                        
-                        bookmarksMenu.open();
-                    }
+                    icon.name: "bookmarks"
+                    PlasmaComponents.ToolTip.text: "View bookmarks"
+                    PlasmaComponents.ToolTip.visible: hovered
+                    onClicked: bookmarksMenu.open()
                     
-                    PlasmaComponents.ContextMenu {
+                    PlasmaComponents.Menu {
                         id: bookmarksMenu
-                    }
-                    
-                    Component {
-                        id: bookmarkMenuItemComponent
-                        PlasmaComponents.MenuItem {
-                            property int pageIndex: -1
-                            onClicked: {
-                                if (pageIndex >= 0) {
-                                    currentPageIndex = pageIndex;
+                        
+                        Instantiator {
+                            model: {
+                                var list = bookmarkCache[currentPath];
+                                return list ? list : [];
+                            }
+                            delegate: PlasmaComponents.MenuItem {
+                                text: modelData.note + " (Pg " + (modelData.page + 1) + ")"
+                                onClicked: {
+                                    currentPageIndex = modelData.page;
                                 }
                             }
+                            onObjectAdded: function(index, object) {
+                                bookmarksMenu.insertItem(index, object)
+                            }
+                            onObjectRemoved: function(index, object) {
+                                bookmarksMenu.removeItem(object)
+                            }
+                        }
+                        
+                        PlasmaComponents.MenuItem {
+                            text: bookmarksMenu.count === 0 ? "No bookmarks" : ""
+                            visible: bookmarksMenu.count === 0
+                            enabled: false
                         }
                     }
                 }
                 
                 PlasmaComponents.ToolButton {
                     id: closeButton
-                    iconSource: "window-close"
-                    tooltip: "Close"
+                    icon.name: "window-close"
+                    PlasmaComponents.ToolTip.text: "Close"
+                    PlasmaComponents.ToolTip.visible: hovered
                     onClicked: {
                         fullRepRoot.closeRequested()
                     }
@@ -212,13 +201,8 @@ Item {
         }
         
         // Separator
-        PlasmaCore.SvgItem {
+        Kirigami.Separator {
             Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            elementId: "horizontal-line"
-            svg: PlasmaCore.Svg {
-                imagePath: "widgets/line"
-            }
         }
         
         // Content viewer with scroll
@@ -290,38 +274,35 @@ Item {
         }
         
         // Separator
-        PlasmaCore.SvgItem {
+        Kirigami.Separator {
             Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            elementId: "horizontal-line"
-            svg: PlasmaCore.Svg {
-                imagePath: "widgets/line"
-            }
         }
         
         // Footer: Navigation and Utilities
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: PlasmaCore.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
             
             // Row 1: Navigation Bar (5 buttons)
             RowLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignHCenter
-                spacing: PlasmaCore.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
                 
                 PlasmaComponents.Button {
                     id: startButton
-                    iconSource: "go-first"
-                    tooltip: "First page"
+                    icon.name: "go-first"
+                    PlasmaComponents.ToolTip.text: "First page"
+                    PlasmaComponents.ToolTip.visible: hovered
                     enabled: currentPageIndex > 0
                     onClicked: currentPageIndex = 0
                 }
                 
                 PlasmaComponents.Button {
                     id: prevButton
-                    iconSource: "go-previous"
-                    tooltip: "Previous page"
+                    icon.name: "go-previous"
+                    PlasmaComponents.ToolTip.text: "Previous page"
+                    PlasmaComponents.ToolTip.visible: hovered
                     enabled: currentPageIndex > 0
                     onClicked: {
                         if (currentPageIndex > 0) {
@@ -339,13 +320,14 @@ Item {
                         return "Page " + (currentPageIndex + 1) + " of " + pages.length
                     }
                     horizontalAlignment: Text.AlignHCenter
-                    Layout.minimumWidth: PlasmaCore.Units.gridUnit * 6
+                    Layout.minimumWidth: Kirigami.Units.gridUnit * 6
                 }
                 
                 PlasmaComponents.Button {
                     id: nextButton
-                    iconSource: "go-next"
-                    tooltip: "Next page"
+                    icon.name: "go-next"
+                    PlasmaComponents.ToolTip.text: "Next page"
+                    PlasmaComponents.ToolTip.visible: hovered
                     enabled: currentPageIndex < (pages.length - 1)
                     onClicked: {
                         if (currentPageIndex < pages.length - 1) {
@@ -356,8 +338,9 @@ Item {
                 
                 PlasmaComponents.Button {
                     id: endButton
-                    iconSource: "go-last"
-                    tooltip: "Last page"
+                    icon.name: "go-last"
+                    PlasmaComponents.ToolTip.text: "Last page"
+                    PlasmaComponents.ToolTip.visible: hovered
                     enabled: currentPageIndex < (pages.length - 1)
                     onClicked: currentPageIndex = pages.length - 1
                 }
@@ -367,12 +350,12 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignHCenter
-                spacing: PlasmaCore.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
                 
                 PlasmaComponents.TextField {
                     id: goToPageField
                     placeholderText: "Page..."
-                    Layout.preferredWidth: PlasmaCore.Units.gridUnit * 5
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 5
                     validator: IntValidator {
                         bottom: 1
                         top: pages.length > 0 ? pages.length : 1
@@ -396,12 +379,13 @@ Item {
                 
                 PlasmaComponents.Button {
                     id: editButton
-                    iconSource: "document-edit"
+                    icon.name: "document-edit"
                     text: "Edit"
-                    tooltip: isInternalFile ? "Edit (will copy to ~/Documents/Quotes/)" : "Edit custom fortune file"
+                    PlasmaComponents.ToolTip.text: "Edit fortune file"
+                    PlasmaComponents.ToolTip.visible: hovered
                     onClicked: {
                         if (currentPath) {
-                            editFileRequested(currentPath);
+                            fullRepRoot.editFileRequested(currentPath);
                         }
                     }
                 }
@@ -433,22 +417,22 @@ Item {
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         
-        width: PlasmaCore.Units.gridUnit * 12
-        padding: PlasmaCore.Units.largeSpacing
+        width: Kirigami.Units.gridUnit * 12
+        padding: Kirigami.Units.largeSpacing
         
         // Center on screen
         x: (parent.width - width) / 2
         y: parent.height * 0.15
         
         background: Rectangle {
-            color: PlasmaCore.Theme.backgroundColor
-            border.color: PlasmaCore.Theme.textColor
+            color: Kirigami.Theme.backgroundColor
+            border.color: Kirigami.Theme.textColor
             border.width: 1
-            radius: PlasmaCore.Units.smallSpacing
+            radius: Kirigami.Units.smallSpacing
         }
         
         ColumnLayout {
-            spacing: PlasmaCore.Units.largeSpacing
+            spacing: Kirigami.Units.largeSpacing
             anchors.fill: parent
             
             PlasmaExtras.Heading {
@@ -476,7 +460,7 @@ Item {
             
             RowLayout {
                 Layout.alignment: Qt.AlignRight
-                spacing: PlasmaCore.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
                 
                 PlasmaComponents.Button {
                     text: "Cancel"
