@@ -17,6 +17,27 @@ KCM.SimpleKCM {
     property string cfg_outlineColor
     property string cfg_backgroundColor
     property bool cfg_debugMode
+    property string cfg_vaultPath
+    property alias cfg_rescanInterval: rescanSpinBox.value
+    property alias cfg_imageMaxHeight: imageMaxHeightSlider.value
+    property alias cfg_textAlignment: alignmentCombo.currentIndex
+
+    // Dialogs return file:// URLs with %-escapes; the widget stores plain paths
+    function urlToPath(url) {
+        var p = url.toString();
+        if (p.indexOf("file://") === 0) p = p.substring(7);
+        try { p = decodeURIComponent(p); } catch (e) {}
+        return p;
+    }
+
+    function addSources(urls) {
+        var combined = cfg_quotesFiles.slice();
+        for (var i = 0; i < urls.length; i++) {
+            var path = urlToPath(urls[i]);
+            if (combined.indexOf(path) === -1) combined.push(path);
+        }
+        cfg_quotesFiles = combined;
+    }
     
     // Separate time components
     property int hours: Math.floor(cfg_rotationInterval / 3600)
@@ -53,7 +74,7 @@ KCM.SimpleKCM {
     Kirigami.FormLayout {
         // Quotes Files List
         ColumnLayout {
-            Kirigami.FormData.label: i18n("Quotes Files:")
+            Kirigami.FormData.label: i18n("Sources:")
             spacing: Kirigami.Units.smallSpacing
             
             ListView {
@@ -99,7 +120,7 @@ KCM.SimpleKCM {
                     
                     Label {
                         anchors.centerIn: parent
-                        text: i18n("No files selected")
+                        text: i18n("No files or folders selected")
                         color: Kirigami.Theme.disabledTextColor
                     }
                 }
@@ -116,10 +137,10 @@ KCM.SimpleKCM {
                     hoverEnabled: true
                     
                     ToolTip.visible: containsMouse
-                    ToolTip.text: i18n("Click to learn how to create custom quote files")
+                    ToolTip.text: i18n("Folders: every .md note inside is a piece. Text files: quotes separated by lines holding only %. Click for the quote file format.")
                     
                     onClicked: {
-                        Qt.openUrlExternally("https://gitlab.com/plasma-qotd-widget/plasma-qotd-widget/-/blob/main/creating_quotes.md")
+                        Qt.openUrlExternally("https://github.com/Kobuster/plasma-qotd-widget-md-image/blob/main/creating_quotes.md")
                     }
                 }
             }
@@ -128,8 +149,14 @@ KCM.SimpleKCM {
         RowLayout {
             Button {
                 icon.name: "list-add"
-                text: i18n("Add File...")
+                text: i18n("Add Files...")
                 onClicked: fileDialog.open()
+            }
+
+            Button {
+                icon.name: "folder-add"
+                text: i18n("Add Folder...")
+                onClicked: folderDialog.open()
             }
             
             Button {
@@ -138,6 +165,25 @@ KCM.SimpleKCM {
                 onClicked: {
                     cfg_quotesFiles = ["quotes/inspirational_quotes.txt"];
                 }
+            }
+        }
+
+        // Vault folder, for finding images embedded with ![[name.jpg]]
+        RowLayout {
+            Kirigami.FormData.label: i18n("Obsidian vault:")
+
+            TextField {
+                id: vaultField
+                Layout.fillWidth: true
+                text: cfg_vaultPath
+                placeholderText: i18n("Optional: vault folder, for embedded images")
+                onTextEdited: cfg_vaultPath = text
+            }
+
+            Button {
+                icon.name: "folder-open"
+                text: i18n("Browse...")
+                onClicked: vaultDialog.open()
             }
         }
 
@@ -180,6 +226,44 @@ KCM.SimpleKCM {
             Label {
                 text: i18n("secs")
             }
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Rescan sources every:")
+
+            SpinBox {
+                id: rescanSpinBox
+                from: 1
+                to: 1440
+                editable: true
+            }
+
+            Label {
+                text: i18n("mins")
+            }
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18n("Image height, at most:")
+
+            Slider {
+                id: imageMaxHeightSlider
+                Layout.fillWidth: true
+                from: 0.1
+                to: 1.0
+                stepSize: 0.05
+            }
+
+            Label {
+                text: i18n("%1% of the widget", Math.round(imageMaxHeightSlider.value * 100))
+                Layout.minimumWidth: 50
+            }
+        }
+
+        ComboBox {
+            id: alignmentCombo
+            Kirigami.FormData.label: i18n("Text alignment:")
+            model: [i18n("Left"), i18n("Centered"), i18n("Justified")]
         }
 
         // Background Opacity
@@ -320,32 +404,25 @@ KCM.SimpleKCM {
     // File Dialog - Allow multiple file selection
     FileDialog {
         id: fileDialog
-        title: i18n("Select Quotes Files")
+        title: i18n("Select Notes or Quote Files")
         fileMode: FileDialog.OpenFiles  // Multiple files
-        nameFilters: ["Text files (*.txt)", "All files (*)"]
+        nameFilters: [i18n("Notes and quote files (*.md *.txt)"), i18n("All files (*)")]
         currentFolder: "file://~"
+        onAccepted: addSources(fileDialog.selectedFiles)
+    }
+
+    FolderDialog {
+        id: folderDialog
+        title: i18n("Select a Folder of Notes")
+        onAccepted: addSources([folderDialog.selectedFolder])
+    }
+
+    FolderDialog {
+        id: vaultDialog
+        title: i18n("Select the Obsidian Vault Folder")
         onAccepted: {
-            var newFiles = [];
-            for (var i = 0; i < fileDialog.selectedFiles.length; i++) {
-                var filePath = fileDialog.selectedFiles[i].toString().replace("file://", "");
-                // Add if not already in list
-                var alreadyExists = false;
-                for (var j = 0; j < cfg_quotesFiles.length; j++) {
-                    if (cfg_quotesFiles[j] === filePath) {
-                        alreadyExists = true;
-                        break;
-                    }
-                }
-                if (!alreadyExists) {
-                    newFiles.push(filePath);
-                }
-            }
-            // Append new files to existing list
-            var combinedList = cfg_quotesFiles.slice();
-            for (var i = 0; i < newFiles.length; i++) {
-                combinedList.push(newFiles[i]);
-            }
-            cfg_quotesFiles = combinedList;
+            cfg_vaultPath = urlToPath(vaultDialog.selectedFolder);
+            vaultField.text = cfg_vaultPath;
         }
     }
 

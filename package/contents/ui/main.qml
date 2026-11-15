@@ -1,25 +1,28 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Window
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import Qt.labs.platform as Platform
 import org.kde.plasma.plasma5support as Plasma5Support
+import "../code/pieces.js" as Pieces
 
 PlasmoidItem {
     id: root
-    
+
     width: Kirigami.Units.gridUnit * 20
     height: Kirigami.Units.gridUnit * 15
 
-    // Disable Plasma's default background to allow full transparency
+    // No Plasma background; the widget draws its own with configurable opacity
     Plasmoid.backgroundHints: PlasmaCore.Types.NoBackground
 
-    // Configuration properties
-    property var quotesFiles: plasmoid.configuration.quotesFiles
+    // Configuration (each widget on the desktop has its own)
+    property var sources: plasmoid.configuration.quotesFiles      // files and folders
+    property string vaultPath: resolvePath(plasmoid.configuration.vaultPath)
     property int rotationInterval: plasmoid.configuration.rotationInterval
+    property int rescanInterval: plasmoid.configuration.rescanInterval
+    property real imageMaxHeight: plasmoid.configuration.imageMaxHeight
+    property int textAlignment: plasmoid.configuration.textAlignment
     property real backgroundOpacity: plasmoid.configuration.backgroundOpacity
     property color textColor: plasmoid.configuration.textColor
     property color outlineColor: plasmoid.configuration.outlineColor
@@ -27,690 +30,268 @@ PlasmoidItem {
     property string textFont: plasmoid.configuration.textFont
     property bool debugMode: plasmoid.configuration.debugMode
 
-    // Debug logging helper
+    // State
+    property var pieces: []          // [{text, image, sourceFile, sourceIndex}]
+    property var current: null      // the piece on screen
+    property var shuffleBag: []      // indices not shown yet in this round
+    property string statusText: i18n("Loading…")
+
+    // Loading state
+    property var pendingCommands: ({})   // command -> source index, or "images"
+    property var loadedFiles: []
+    property var imagePaths: []
+    property int loadsLeft: 0
+    property bool keepCurrentOnLoad: false
+
     function log() {
-        if (debugMode) {
-            var args = Array.prototype.slice.call(arguments);
-            console.log.apply(console, args);
-        }
-    }
-    
-    // State properties
-    property string currentQuote: plasmoid.configuration.currentQuote
-    property var quotes: []  // Array of {text: string, sourceFile: string, sourceIndex: int}
-    property int currentQuoteIndex: plasmoid.configuration.currentQuoteIndex
-    property string currentQuoteSourceFile: plasmoid.configuration.currentQuoteSourceFile
-    
-    // Multi-file loading state
-    property int filesLoaded: 0
-    property int filesToLoad: 0
-    property var tempQuotes: []
-    
-    // Popup state
-    property var paginatedPages: []
-    property bool popupDataReady: false
-    property int popupInitialPage: 0
-    
-    // Wrap a string in single quotes for the shell, escaping any single quote inside
-    // (file names like "Carceri d'invenzione.jpg" broke the old plain quoting)
-    function shellQuote(s) {
-        return "'" + String(s).replace(/'/g, "'\\''") + "'";
+        if (debugMode) console.log.apply(console, Array.prototype.slice.call(arguments));
     }
 
-    // Helper function to get filename without path or extension
-    function getQuotesFileName() {
-        if (!currentQuoteSourceFile) {
-            if (!quotesFiles || quotesFiles.length === 0) return "Quotes";
-            var path = quotesFiles[0].toString();
-            var filename = path.split('/').pop();
-            var dotIndex = filename.lastIndexOf('.');
-            if (dotIndex > 0) {
-                filename = filename.substring(0, dotIndex);
-            }
-            return filename;
+    // Absolute path for a configured path: ~, file:// and paths relative to the widget package
+    function resolvePath(p) {
+        if (!p) return "";
+        p = p.toString();
+        if (p.indexOf("file://") === 0) {
+            p = p.substring(7);
+            try { p = decodeURIComponent(p); } catch (e) {}
         }
-        var path = currentQuoteSourceFile.toString();
-        var filename = path.split('/').pop();
-        var dotIndex = filename.lastIndexOf('.');
-        if (dotIndex > 0) {
-            filename = filename.substring(0, dotIndex);
+        if (p.indexOf("~/") === 0 || p === "~") {
+            var home = Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation).toString().replace("file://", "");
+            p = home + p.substring(1);
         }
-        return filename;
+        if (p.indexOf("/") !== 0) {
+            p = Qt.resolvedUrl("../../" + p).toString().replace("file://", "");
+            try { p = decodeURIComponent(p); } catch (e) {}
+        }
+        return p.replace(/\/+$/, "");
     }
 
-    // Context menu actions
+    function fontPart(i, fallback) {
+        var parts = (textFont || "").split(",");
+        return parts.length > i && parts[i] !== "" ? parts[i] : fallback;
+    }
+
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
-            text: i18n("View in Context")
-            icon.name: "zoom-in"
-            onTriggered: {
-                openViewInContext();
-            }
+            text: i18n("Next Piece")
+            icon.name: "media-skip-forward"
+            onTriggered: showNext()
         },
         PlasmaCore.Action {
-            text: i18n("Reload Quotes from Disk")
+            text: i18n("Open in Default App")
+            icon.name: "document-open"
+            onTriggered: openCurrent()
+        },
+        PlasmaCore.Action {
+            text: i18n("Open in Obsidian")
+            icon.name: "document-edit"
+            onTriggered: openInObsidian()
+        },
+        PlasmaCore.Action {
+            text: i18n("Open Containing Folder")
+            icon.name: "folder-open"
+            onTriggered: openFolder()
+        },
+        PlasmaCore.Action {
+            text: i18n("Reload from Disk")
             icon.name: "view-refresh"
-            onTriggered: {
-                log("Reloading quotes from disk...");
-                loadFortuneFile(true);
-            }
+            onTriggered: loadSources(true)
         }
     ]
 
-    // Timer for auto-rotation
+    function openCurrent() {
+        if (!current) return;
+        if (!Qt.openUrlExternally(Pieces.fileUrl(current.sourceFile))) openFolder();
+    }
+
+    function openFolder() {
+        if (!current) return;
+        Qt.openUrlExternally(Pieces.fileUrl(Pieces.dirName(current.sourceFile)));
+    }
+
+    function openInObsidian() {
+        if (!current) return;
+        Qt.openUrlExternally("obsidian://open?path=" + encodeURIComponent(current.sourceFile));
+    }
+
+    // Runs shell commands; each command's output arrives in onNewData
+    Plasma5Support.DataSource {
+        id: runner
+        engine: "executable"
+
+        onNewData: function (sourceName, data) {
+            if (!(sourceName in root.pendingCommands)) return;
+            var tag = root.pendingCommands[sourceName];
+            delete root.pendingCommands[sourceName];
+            if (data["exit code"] !== 0) log("command failed:", sourceName, data.stderr);
+            var out = data.stdout || "";
+            if (tag === "images") {
+                root.imagePaths = out.split("\n").filter(function (l) { return l.length > 0; });
+            } else {
+                root.loadedFiles = root.loadedFiles.concat(Pieces.splitRecords(out));
+            }
+            root.loadsLeft--;
+            if (root.loadsLeft === 0) root.finishLoading();
+        }
+    }
+
+    // Read all sources (and the image list) from disk
+    function loadSources(keepCurrent) {
+        if (!sources || sources.length === 0) {
+            pieces = [];
+            current = null;
+            statusText = i18n("No sources configured.\n\nRight-click > Configure to add files or folders.");
+            return;
+        }
+        keepCurrentOnLoad = keepCurrent === true;
+        loadedFiles = [];
+        imagePaths = [];
+        var commands = {};
+        var stamp = Date.now();
+        var roots = [];
+        for (var i = 0; i < sources.length; i++) {
+            var path = resolvePath(sources[i]);
+            if (!path) continue;
+            // The trailing no-op makes each command unique, so it runs again on reload
+            commands[Pieces.loadCommand(path) + " ; : " + stamp + "-" + i] = i;
+            roots.push(path);
+        }
+        // Embedded images are looked up in the vault, or else in the sources themselves
+        var imageRoots = vaultPath ? [vaultPath] : roots;
+        if (imageRoots.length > 0) {
+            commands[Pieces.imageListCommand(imageRoots) + " ; : " + stamp + "-images"] = "images";
+        }
+        pendingCommands = commands;
+        loadsLeft = Object.keys(commands).length;
+        log("loading", loadsLeft, "commands");
+        runner.connectedSources = Object.keys(commands);
+    }
+
+    function finishLoading() {
+        var index = Pieces.buildImageIndex(imagePaths);
+        var all = [];
+        for (var i = 0; i < loadedFiles.length; i++) {
+            all = all.concat(Pieces.fileToPieces(loadedFiles[i], vaultPath, index));
+        }
+        log("loaded", all.length, "pieces from", loadedFiles.length, "files");
+        pieces = all;
+        shuffleBag = [];
+        if (all.length === 0) {
+            current = null;
+            statusText = i18n("Nothing found in the configured sources.\n\nFolders are searched for .md notes; text files are read as quotes separated by % lines.");
+            return;
+        }
+        // Keep showing the same piece if it still exists (reload, rescan, or Plasma restart)
+        var savedFile = keepCurrentOnLoad && current ? current.sourceFile : plasmoid.configuration.currentQuoteSourceFile;
+        var savedIndex = keepCurrentOnLoad && current ? current.sourceIndex : plasmoid.configuration.currentQuoteIndex;
+        var fresh = keepCurrentOnLoad || (Date.now() - plasmoid.configuration.lastUpdateTime) < rotationInterval * 1000;
+        if (fresh) {
+            for (var j = 0; j < all.length; j++) {
+                if (all[j].sourceFile === savedFile && all[j].sourceIndex === savedIndex) {
+                    current = all[j];
+                    return;
+                }
+            }
+        }
+        showNext();
+    }
+
+    // Next piece in shuffled order; every piece comes once before any repeats
+    function showNext() {
+        if (pieces.length === 0) {
+            loadSources(false);
+            return;
+        }
+        if (shuffleBag.length === 0) {
+            var bag = [];
+            for (var i = 0; i < pieces.length; i++) bag.push(i);
+            for (var k = bag.length - 1; k > 0; k--) {
+                var r = Math.floor(Math.random() * (k + 1));
+                var t = bag[k]; bag[k] = bag[r]; bag[r] = t;
+            }
+            // Avoid showing the same piece twice in a row across rounds
+            if (bag.length > 1 && current && pieces[bag[bag.length - 1]] === current) {
+                var last = bag.pop(); bag.unshift(last);
+            }
+            shuffleBag = bag;
+        }
+        var bagNow = shuffleBag;
+        current = pieces[bagNow.pop()];
+        shuffleBag = bagNow;
+
+        plasmoid.configuration.currentQuoteSourceFile = current.sourceFile;
+        plasmoid.configuration.currentQuoteIndex = current.sourceIndex;
+        plasmoid.configuration.lastUpdateTime = Date.now();
+        rotationTimer.restart();
+    }
+
     Timer {
         id: rotationTimer
-        interval: root.rotationInterval * 1000
+        interval: Math.max(10, root.rotationInterval) * 1000
         running: true
         repeat: true
-        onTriggered: loadRandomQuote()
+        onTriggered: showNext()
     }
 
-    // File reader using executable DataSource for Plasma 6
-    Plasma5Support.DataSource {
-        id: fileReader
-        engine: "executable"
-        
-        onNewData: {
-            log("fileReader onNewData for source:", sourceName);
-            log("  exit code:", data["exit code"]);
-            
-            if (data["exit code"] === 0) {
-                var content = data.stdout;
-                log("  content length:", content.length);
-                
-                // Extract the original file path from the output
-                var originalPath = "";
-                var fileContent = content;
-                
-                if (content.startsWith("FILE:")) {
-                    var firstNewline = content.indexOf("\n");
-                    if (firstNewline > 0) {
-                        var rawPath = content.substring(5, firstNewline);
-                        // Remove timestamp suffix (format: path:timestamp)
-                        var lastColon = rawPath.lastIndexOf(":");
-                        if (lastColon > 0) {
-                            originalPath = rawPath.substring(0, lastColon);
-                        } else {
-                            originalPath = rawPath;
-                        }
-                        fileContent = content.substring(firstNewline + 1);
-                    }
-                }
-                
-                log("  original path:", originalPath);
-                
-                // Parse fortune file format (quotes separated by %)
-                var fileQuotes = fileContent.split(/\n%\n/).map(function(q) { 
-                    return q.trim(); 
-                }).filter(function(q) { 
-                    return q.length > 0; 
-                });
-                
-                log("  parsed", fileQuotes.length, "quotes");
-                
-                // Add quotes with source tracking
-                for (var i = 0; i < fileQuotes.length; i++) {
-                    tempQuotes.push({
-                        text: fileQuotes[i],
-                        sourceFile: originalPath,
-                        sourceIndex: i
-                    });
-                }
-                
-                filesLoaded++;
-                log("  filesLoaded:", filesLoaded, "/", filesToLoad);
-                checkAllFilesLoaded();
-            } else {
-                log("  error loading, stderr:", data.stderr);
-                filesLoaded++;
-                checkAllFilesLoaded();
-            }
-            // Don't manually disconnect - let DataSource handle it
-        }
-    }
-    
-    // Load and parse fortune files
-    function loadFortuneFile(forceReload) {
-        if (!quotesFiles || quotesFiles.length === 0) {
-            currentQuote = i18n("No quotes file configured.\n\nPlease select a file in settings.");
-            return;
-        }
-        
-        log("loadFortuneFile: Loading", quotesFiles.length, "files");
-        
-        // Reset loading state
-        filesLoaded = 0;
-        filesToLoad = quotesFiles.length;
-        tempQuotes = [];
-        
-        // Collect all commands to run simultaneously
-        var commands = [];
-        var timestamp = Date.now(); // Use timestamp to force unique commands
-        
-        for (var i = 0; i < quotesFiles.length; i++) {
-            var filePath = quotesFiles[i];
-            if (!filePath) continue;
-            
-            // If relative path, resolve to plasmoid directory
-            if (!filePath.startsWith("/") && !filePath.startsWith("~") && !filePath.startsWith("file://")) {
-                filePath = Qt.resolvedUrl("../../" + filePath).toString();
-            } else {
-                if (filePath.startsWith("~/")) {
-                    filePath = filePath.replace("~", Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation));
-                }
-                if (!filePath.startsWith("file://")) {
-                    filePath = "file://" + filePath;
-                }
-            }
-            
-            var cleanPath = filePath.toString().replace("file://", "");
-            log("Preparing to load file", i, ":", cleanPath);
-            
-            // Create a unique command that includes the original path in a comment
-            // We append a timestamp to the FILE marker to make the command unique every time
-            // This ensures DataSource sees it as a new source and executes it
-            var command = "echo " + shellQuote("FILE:" + quotesFiles[i] + ":" + timestamp) + " && head -n 10000 " + shellQuote(cleanPath);
-            commands.push(command);
-        }
-        
-        // Set all commands at once
-        if (commands.length > 0) {
-            log("Starting to load", commands.length, "files simultaneously");
-            fileReader.connectedSources = commands;
-        }
-    }
-    
-    function checkAllFilesLoaded() {
-        log("checkAllFilesLoaded:", filesLoaded, "/", filesToLoad);
-        if (filesLoaded >= filesToLoad) {
-            // All files loaded, update quotes array
-            quotes = tempQuotes;
-            log("All files loaded! Total quotes:", quotes.length);
-            
-            if (quotes.length > 0) {
-                // Check if we should restore a previous quote
-                if (currentQuoteIndex >= 0 && currentQuoteIndex < quotes.length) {
-                    // Restore the quote
-                    log("Restoring previous quote at index:", currentQuoteIndex);
-                    currentQuote = quotes[currentQuoteIndex].text;
-                    currentQuoteSourceFile = quotes[currentQuoteIndex].sourceFile;
-                } else {
-                    // Load a random quote
-                    log("Loading random quote (no valid previous index)");
-                    loadRandomQuote();
-                }
-            } else {
-                currentQuote = i18n("No quotes found in files.\n\nExpected format: quotes separated by % on its own line");
-            }
-        }
+    // Pick up new or changed notes without restarting Plasma
+    Timer {
+        interval: Math.max(1, root.rescanInterval) * 60000
+        running: true
+        repeat: true
+        onTriggered: loadSources(true)
     }
 
-    // Load a random quote from parsed quotes
-    function loadRandomQuote() {
-        log("loadRandomQuote called, quotes.length:", quotes.length);
-        if (quotes.length === 0) {
-            // Check if files are currently being loaded
-            if (filesLoaded < filesToLoad && filesToLoad > 0) {
-                log("Files are still loading, waiting...");
-                return;
-            }
-            log("No quotes loaded, calling loadFortuneFile");
-            loadFortuneFile();
-            return;
-        }
-        
-        var randomIndex = Math.floor(Math.random() * quotes.length);
-        log("Selected random index:", randomIndex, "current index:", currentQuoteIndex);
-        currentQuoteIndex = randomIndex;
-        currentQuote = quotes[randomIndex].text;
-        currentQuoteSourceFile = quotes[randomIndex].sourceFile;
-        log("New quote set, first 50 chars:", currentQuote.substring(0, 50));
-        
-        // Persist to configuration
-        plasmoid.configuration.currentQuote = currentQuote;
-        plasmoid.configuration.currentQuoteIndex = currentQuoteIndex;
-        plasmoid.configuration.currentQuoteSourceFile = currentQuoteSourceFile;
-        plasmoid.configuration.lastUpdateTime = Date.now();
-        
-        // Reset timer to full interval
-        rotationTimer.stop();
-        rotationTimer.interval = root.rotationInterval * 1000;
-        rotationTimer.start();
-    }
-    
-    // Pagination functions for View in Context popup
-    function countLines(text) {
-        if (!text) return 0;
-        return text.split('\n').length;
-    }
-    
-    function truncateEntry(entry, maxLines) {
-        var lines = entry.split('\n');
-        if (lines.length <= maxLines) {
-            return entry;
-        }
-        var truncated = lines.slice(0, maxLines).join('\n');
-        return truncated + '\n...';
-    }
-    
-    function formatPage(entries) {
-        var htmlEntries = [];
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            var htmlEntry = entry.replace(/\n/g, '<br>');
-            htmlEntries.push(htmlEntry);
-        }
-        return htmlEntries.join('<hr style="margin: 20px 0; border: none; border-top: 2px solid #888; opacity: 0.5;">');
-    }
-    
-    // Paginate quotes and find which page contains the current quote
-    function paginateFromCurrentQuote() {
-        if (quotes.length === 0) {
-            paginatedPages = [];
-            popupDataReady = false;
-            popupInitialPage = 0;
-            return;
-        }
-        
-        // Filter quotes to only show those from the current source file
-        var filteredQuotes = [];
-        var currentQuoteIndexInFiltered = -1;
-        
-        for (var i = 0; i < quotes.length; i++) {
-            if (quotes[i].sourceFile === currentQuoteSourceFile) {
-                filteredQuotes.push(quotes[i].text);
-                if (i === currentQuoteIndex) {
-                    currentQuoteIndexInFiltered = filteredQuotes.length - 1;
-                }
-            }
-        }
-        
-        if (filteredQuotes.length === 0) {
-            paginatedPages = [];
-            popupDataReady = false;
-            popupInitialPage = 0;
-            return;
-        }
-        
-        var maxLinesPerPage = 45;
-        var pages = [];
-        var currentPage = [];
-        var currentLineCount = 0;
-        var pageContainingCurrentQuote = 0;
-        
-        for (var i = 0; i < filteredQuotes.length; i++) {
-            var entry = filteredQuotes[i];
-            var entryLines = countLines(entry);
-            
-            // If a single entry exceeds max lines, truncate it
-            if (entryLines > maxLinesPerPage) {
-                entry = truncateEntry(entry, maxLinesPerPage);
-                entryLines = maxLinesPerPage;
-            }
-            
-            // Check if adding this entry would exceed page limit
-            var linesNeeded = entryLines;
-            if (currentPage.length > 0) {
-                linesNeeded += 1; // Add 1 for the separator
-            }
-            
-            if (currentLineCount + linesNeeded > maxLinesPerPage && currentPage.length > 0) {
-                // Push current page and start a new one
-                pages.push(formatPage(currentPage));
-                currentPage = [entry];
-                currentLineCount = entryLines;
-            } else {
-                // Add entry to current page
-                currentPage.push(entry);
-                currentLineCount += linesNeeded;
-            }
-            
-            // Track which page contains the current quote
-            if (i === currentQuoteIndexInFiltered) {
-                pageContainingCurrentQuote = pages.length; // Will be the index of the page being built
-            }
-        }
-        
-        // Don't forget the last page
-        if (currentPage.length > 0) {
-            pages.push(formatPage(currentPage));
-        }
-        
-        paginatedPages = pages;
-        popupInitialPage = pageContainingCurrentQuote;
-        popupDataReady = true;
-    }
-    
-    // Open the View in Context popup
-    function openViewInContext() {
-        paginateFromCurrentQuote();
-        if (contextPopup.visible) {
-            // If already visible, just ensure page is correct
-            fullRep.currentPageIndex = root.popupInitialPage;
-        } else {
-            // If opening, ensure page is reset
-            fullRep.currentPageIndex = root.popupInitialPage;
-            contextPopup.visible = true;
-        }
-    }
+    Component.onCompleted: loadSources(false)
+    onSourcesChanged: loadSources(false)
+    onVaultPathChanged: loadSources(true)
 
-    // Check if we should restore or refresh quote on startup
-    Component.onCompleted: {
-        console.log("=== Widget Component.onCompleted ===");
-        console.log("  quotesFiles:", JSON.stringify(quotesFiles));
-        console.log("  quotesFile (old):", plasmoid.configuration.quotesFile);
-        
-        // Migration: Check if old quotesFile (singular) exists and quotesFiles is empty
-        var oldQuotesFile = plasmoid.configuration.quotesFile;
-        if (oldQuotesFile && oldQuotesFile.length > 0) {
-            console.log(">>> MIGRATING: Found old quotesFile, converting to quotesFiles array");
-            plasmoid.configuration.quotesFiles = [oldQuotesFile];
-            plasmoid.configuration.quotesFile = "";  // Clear old config
-            console.log(">>> Migration complete. quotesFiles is now:", JSON.stringify(plasmoid.configuration.quotesFiles));
-        } else if (!quotesFiles || quotesFiles.length === 0) {
-            console.log(">>> No quotes files configured, setting default");
-            plasmoid.configuration.quotesFiles = ["quotes/inspirational_quotes.txt"];
-            console.log(">>> Default set. quotesFiles is now:", JSON.stringify(plasmoid.configuration.quotesFiles));
-        } else {
-            console.log(">>> quotesFiles already configured:", JSON.stringify(quotesFiles));
-        }
-        
-        loadFortuneFile();
-        
-        var timeSinceUpdate = Date.now() - plasmoid.configuration.lastUpdateTime;
-        var intervalMs = root.rotationInterval * 1000;
-        
-        if (currentQuote && timeSinceUpdate < intervalMs && currentQuoteIndex >= 0) {
-            // Quote is still fresh, keep it and adjust timer
-            var remainingTime = intervalMs - timeSinceUpdate;
-            rotationTimer.interval = remainingTime;
-            rotationTimer.restart();
-            // Reset to normal interval after first trigger
-            rotationTimer.triggered.connect(function() {
-                if (rotationTimer.interval !== root.rotationInterval * 1000) {
-                    rotationTimer.interval = root.rotationInterval * 1000;
-                }
-            });
-        } else {
-            // Interval has passed or no quote, load fresh quote
-            rotationTimer.interval = root.rotationInterval * 1000;
-            rotationTimer.restart();
-        }
-    }
-
-    // Watch for configuration changes
-    onQuotesFilesChanged: {
-        console.log("onQuotesFilesChanged: Reloading files");
-        loadFortuneFile();
-    }
-    
-    onRotationIntervalChanged: {
-        log("Rotation interval changed to:", rotationInterval, "seconds");
-        rotationTimer.stop();
-        rotationTimer.interval = root.rotationInterval * 1000;
-        rotationTimer.start();
-    }
-
-    // Popup window for View in Context
-    Window {
-        id: contextPopup
-        flags: Qt.Window | Qt.WindowStaysOnTopHint
-        modality: Qt.ApplicationModal
-        title: root.getQuotesFileName()
-        width: Math.max(root.width, Kirigami.Units.gridUnit * 20)
-        height: Screen.height * 0.75
-        
-        // Center on screen when visibility changes
-        onVisibleChanged: {
-            if (visible) {
-                x = (Screen.width - width) / 2;
-                y = (Screen.height - height) / 2;
-            }
-        }
-        
-        FullRepresentation {
-            id: fullRep
-            anchors.fill: parent
-            pages: root.paginatedPages
-            dataLoaded: root.popupDataReady
-            initialPageIndex: root.popupInitialPage
-            textFont: root.textFont
-            textColor: root.textColor
-            titleText: root.getQuotesFileName()
-            currentPath: root.currentQuoteSourceFile
-            bookmarkDataString: plasmoid.configuration.bookmarkData
-            onCloseRequested: contextPopup.visible = false
-            onBookmarkDataStringChanged: {
-                plasmoid.configuration.bookmarkData = bookmarkDataString
-            }
-            onEditFileRequested: {
-                handleEditFile(sourcePath);
-            }
-        }
-    }
-
-    // File copying for default quotes
-    Plasma5Support.DataSource {
-        id: fileCopier
-        engine: "executable"
-        property string targetPath: ""
-        property string originalPath: ""
-        property string resolvedSourcePath: ""
-        property bool needsCopy: false
-        
-        onNewData: {
-            if (data["exit code"] === 0) {
-                if (needsCopy) {
-                    // Directory created, now copy the file
-                    needsCopy = false;
-                    connectedSources = ["cp " + shellQuote(resolvedSourcePath) + " " + shellQuote(targetPath)];
-                } else {
-                    // File copied successfully
-                    log("Copied file to:", targetPath);
-                    // Update configuration to use the copied file
-                    var newList = [];
-                    for (var i = 0; i < quotesFiles.length; i++) {
-                        if (quotesFiles[i] === originalPath) {
-                            newList.push(targetPath);
-                        } else {
-                            newList.push(quotesFiles[i]);
-                        }
-                    }
-                    plasmoid.configuration.quotesFiles = newList;
-                    quotesFiles = newList;
-                    
-                    // Reload quotes
-                    loadFortuneFile(true);
-                    
-                    // Open the copied file
-                    Qt.openUrlExternally("file://" + targetPath);
-                }
-            } else {
-                log("Error executing command:", data.stderr);
-            }
-            // Don't manually disconnect - let DataSource handle it
-        }
-    }
-    
-    function handleEditFile(sourcePath) {
-        if (!sourcePath) return;
-        
-        var path = sourcePath.toString();
-        
-        // Check if it's an internal/default file
-        var isInternal = path.indexOf("contents/common") !== -1 
-                      || path.indexOf("/usr/share/plasma") !== -1
-                      || path.indexOf(".local/share/plasma/plasmoids") !== -1
-                      || path.indexOf("quotes/") !== -1
-                      || (!path.startsWith("/") && !path.startsWith("~"));
-        
-        if (isInternal) {
-            // Need to copy to ~/Documents/Quotes/
-            var filename = path.split('/').pop();
-            var targetPath = Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation) + "/Documents/Quotes/" + filename;
-            
-            // Resolve source path if relative
-            var resolvedSource = path;
-            if (!resolvedSource.startsWith("/") && !resolvedSource.startsWith("~") && !resolvedSource.startsWith("file://")) {
-                resolvedSource = Qt.resolvedUrl("../../" + resolvedSource).toString().replace("file://", "");
-            } else if (resolvedSource.startsWith("~/")) {
-                resolvedSource = resolvedSource.replace("~", Platform.StandardPaths.writableLocation(Platform.StandardPaths.HomeLocation));
-            } else if (resolvedSource.startsWith("file://")) {
-                resolvedSource = resolvedSource.replace("file://", "");
-            }
-            
-            // Set up for copy operation
-            fileCopier.targetPath = targetPath;
-            fileCopier.originalPath = path;
-            fileCopier.resolvedSourcePath = resolvedSource;
-            fileCopier.needsCopy = true;
-            
-            // First create the directory
-            fileCopier.connectedSources = ["mkdir -p ~/Documents/Quotes"];
-        } else {
-            // Just open the file
-            var openPath = path;
-            if (!openPath.startsWith("file://")) {
-                openPath = "file://" + openPath;
-            }
-            Qt.openUrlExternally(openPath);
-        }
-    }
-
-    // Main UI
-    fullRepresentation: ColumnLayout {
-        anchors.fill: parent
-        spacing: 0
+    fullRepresentation: Item {
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 6
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 4
 
         Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            color: backgroundOpacity === 0 ? "transparent" : Qt.rgba(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundOpacity)
+            anchors.fill: parent
+            color: root.backgroundOpacity === 0 ? "transparent"
+                 : Qt.rgba(root.backgroundColor.r, root.backgroundColor.g, root.backgroundColor.b, root.backgroundOpacity)
+        }
 
-            Flickable {
-                id: flickable
+        PieceView {
+            anchors.fill: parent
+            anchors.margins: 10
+            anchors.bottomMargin: 26
+            text: root.current ? root.current.text : root.statusText
+            imageSource: root.current && root.current.image ? Pieces.fileUrl(root.current.image) : ""
+            imageMaxHeight: height * root.imageMaxHeight
+            alignment: [Text.AlignLeft, Text.AlignHCenter, Text.AlignJustify][root.textAlignment] || Text.AlignHCenter
+            textColor: root.textColor
+            outlineColor: root.outlineColor
+            fontFamily: root.fontPart(0, "")
+            fontPointSize: parseInt(root.fontPart(1, "12")) || 12
+            fontWeight: parseInt(root.fontPart(2, "400")) || Font.Normal
+            fontItalic: root.fontPart(3, "") === "italic"
+            onClicked: root.showNext()
+        }
+
+        // Opens the current note or quote file in the default app
+        Text {
+            text: "…"
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 5
+            color: root.textColor
+            style: Text.Outline
+            styleColor: root.outlineColor
+            font.pointSize: parseInt(root.fontPart(1, "12")) || 12
+            opacity: openArea.containsMouse ? 1.0 : 0.6
+            visible: root.current !== null
+
+            MouseArea {
+                id: openArea
                 anchors.fill: parent
-                anchors.margins: 10
-                anchors.bottomMargin: 30
-                contentWidth: quoteText.width
-                contentHeight: quoteText.height
-                clip: true
-
-                ScrollBar.vertical: ScrollBar {
-                    policy: ScrollBar.AsNeeded
-                }
-
-                Text {
-                    id: quoteText
-                    width: flickable.width
-                    text: currentQuote || i18n("Loading quote...")
-                    color: textColor
-                    font.family: {
-                        if (textFont) {
-                            var parts = textFont.split(",");
-                            return parts[0] || "";
-                        }
-                        return "";
-                    }
-                    font.pointSize: {
-                        if (textFont) {
-                            var parts = textFont.split(",");
-                            if (parts.length > 1) {
-                                return parseInt(parts[1]) || 12;
-                            }
-                        }
-                        return 12;
-                    }
-                    font.weight: {
-                        if (textFont) {
-                            var parts = textFont.split(",");
-                            if (parts.length > 2) {
-                                return parseInt(parts[2]) || Font.Normal;
-                            }
-                        }
-                        return Font.Normal;
-                    }
-                    font.italic: {
-                        if (textFont) {
-                            var parts = textFont.split(",");
-                            if (parts.length > 3) {
-                                return parts[3] === "italic";
-                            }
-                        }
-                        return false;
-                    }
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    
-                    lineHeight: 0.8
-                    
-                    style: Text.Outline
-                    styleColor: outlineColor
-                    
-                    // Click to advance
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRandomQuote()
-                        cursorShape: Qt.PointingHandCursor
-                    }
-                }
-            }
-            
-            // View in Context button
-            Text {
-                id: viewInContextButton
-                text: "..."
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.margins: 5
-                color: textColor
-                font.family: {
-                    if (textFont) {
-                        var parts = textFont.split(",");
-                        return parts[0] || "";
-                    }
-                    return "";
-                }
-                font.pointSize: {
-                    if (textFont) {
-                        var parts = textFont.split(",");
-                        if (parts.length > 1) {
-                            return parseInt(parts[1]) || 12;
-                        }
-                    }
-                    return 12;
-                }
-                font.weight: {
-                    if (textFont) {
-                        var parts = textFont.split(",");
-                        if (parts.length > 2) {
-                            return parseInt(parts[2]) || Font.Normal;
-                        }
-                    }
-                    return Font.Normal;
-                }
-                font.italic: {
-                    if (textFont) {
-                        var parts = textFont.split(",");
-                        if (parts.length > 3) {
-                            return parts[3] === "italic";
-                        }
-                    }
-                    return false;
-                }
-                style: Text.Outline
-                styleColor: outlineColor
-                opacity: viewInContextMouseArea.containsMouse ? 1.0 : 0.6
-                
-                MouseArea {
-                    id: viewInContextMouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: openViewInContext()
-                }
+                anchors.margins: -6
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openCurrent()
             }
         }
     }
