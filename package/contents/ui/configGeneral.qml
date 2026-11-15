@@ -9,6 +9,19 @@ KCM.SimpleKCM {
     id: generalPage
 
     property var cfg_quotesFiles: []
+    property var cfg_disabledSources: []
+    property var cfg_flatSources: []
+
+    // Add or remove a path in one of the flag lists
+    function setFlag(list, path, on) {
+        var out = (list || []).filter(function (p) { return p !== path && p !== ""; });
+        if (on) out.push(path);
+        return out;
+    }
+
+    function isFolder(path) {
+        return !/\.(md|txt)$/i.test(path);
+    }
     property int cfg_rotationInterval
     property alias cfg_backgroundOpacity: backgroundOpacity.value
     property string cfg_textFont
@@ -89,16 +102,32 @@ KCM.SimpleKCM {
                     width: filesListView.width
                     spacing: Kirigami.Units.smallSpacing
                     
+                    CheckBox {
+                        checked: (cfg_disabledSources || []).indexOf(modelData) === -1
+                        onToggled: cfg_disabledSources = setFlag(cfg_disabledSources, modelData, !checked)
+                        ToolTip.visible: hovered
+                        ToolTip.text: i18n("Show pieces from this source")
+                    }
+
                     Label {
                         Layout.fillWidth: true
                         text: modelData
                         elide: Text.ElideMiddle
+                        opacity: (cfg_disabledSources || []).indexOf(modelData) === -1 ? 1.0 : 0.5
+                    }
+
+                    CheckBox {
+                        text: i18n("Subfolders")
+                        visible: isFolder(modelData)
+                        checked: (cfg_flatSources || []).indexOf(modelData) === -1
+                        onToggled: cfg_flatSources = setFlag(cfg_flatSources, modelData, !checked)
                     }
                     
                     Button {
                         icon.name: "edit-delete"
                         text: i18n("Remove")
                         onClicked: {
+                            var path = modelData;
                             var newList = [];
                             for (var i = 0; i < cfg_quotesFiles.length; i++) {
                                 if (i !== index) {
@@ -106,6 +135,8 @@ KCM.SimpleKCM {
                                 }
                             }
                             cfg_quotesFiles = newList;
+                            cfg_disabledSources = setFlag(cfg_disabledSources, path, false);
+                            cfg_flatSources = setFlag(cfg_flatSources, path, false);
                         }
                     }
                 }

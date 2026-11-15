@@ -10,6 +10,13 @@
     <entry name="quotesFiles" type="StringList">
       <default>quotes/inspirational_quotes.txt</default>
     </entry>
+    <!-- Sources switched off, and folders read without their subfolders -->
+    <entry name="disabledSources" type="StringList">
+      <default></default>
+    </entry>
+    <entry name="flatSources" type="StringList">
+      <default></default>
+    </entry>
     <entry name="vaultPath" type="String">
       <label>Obsidian vault folder, used to find embedded images</label>
       <default></default>

@@ -18,6 +18,8 @@ PlasmoidItem {
 
     // Configuration (each widget on the desktop has its own)
     property var sources: plasmoid.configuration.quotesFiles      // files and folders
+    property var disabledSources: plasmoid.configuration.disabledSources
+    property var flatSources: plasmoid.configuration.flatSources   // folders without subfolders
     property string vaultPath: resolvePath(plasmoid.configuration.vaultPath)
     property int rotationInterval: plasmoid.configuration.rotationInterval
     property int rescanInterval: plasmoid.configuration.rescanInterval
@@ -149,12 +151,22 @@ PlasmoidItem {
         var commands = {};
         var stamp = Date.now();
         var roots = [];
+        var off = disabledSources || [];
+        var flat = flatSources || [];
         for (var i = 0; i < sources.length; i++) {
+            if (off.indexOf(sources[i]) !== -1) continue;
             var path = resolvePath(sources[i]);
             if (!path) continue;
+            var recursive = flat.indexOf(sources[i]) === -1;
             // The trailing no-op makes each command unique, so it runs again on reload
-            commands[Pieces.loadCommand(path) + " ; : " + stamp + "-" + i] = i;
+            commands[Pieces.loadCommand(path, recursive) + " ; : " + stamp + "-" + i] = i;
             roots.push(path);
+        }
+        if (roots.length === 0) {
+            pieces = [];
+            current = null;
+            statusText = i18n("All sources are switched off.\n\nRight-click > Configure to switch one on.");
+            return;
         }
         // Embedded images are looked up in the vault, or else in the sources themselves
         var imageRoots = vaultPath ? [vaultPath] : roots;
@@ -243,6 +255,8 @@ PlasmoidItem {
 
     Component.onCompleted: loadSources(false)
     onSourcesChanged: loadSources(false)
+    onDisabledSourcesChanged: loadSources(true)
+    onFlatSourcesChanged: loadSources(true)
     onVaultPathChanged: loadSources(true)
 
     fullRepresentation: Item {
@@ -258,7 +272,6 @@ PlasmoidItem {
         PieceView {
             anchors.fill: parent
             anchors.margins: 10
-            anchors.bottomMargin: 26
             text: root.current ? root.current.text : root.statusText
             imageSource: root.current && root.current.image ? Pieces.fileUrl(root.current.image) : ""
             imageMaxHeight: height * root.imageMaxHeight
@@ -270,29 +283,6 @@ PlasmoidItem {
             fontWeight: parseInt(root.fontPart(2, "400")) || Font.Normal
             fontItalic: root.fontPart(3, "") === "italic"
             onClicked: root.showNext()
-        }
-
-        // Opens the current note or quote file in the default app
-        Text {
-            text: "…"
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 5
-            color: root.textColor
-            style: Text.Outline
-            styleColor: root.outlineColor
-            font.pointSize: parseInt(root.fontPart(1, "12")) || 12
-            opacity: openArea.containsMouse ? 1.0 : 0.6
-            visible: root.current !== null
-
-            MouseArea {
-                id: openArea
-                anchors.fill: parent
-                anchors.margins: -6
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.openCurrent()
-            }
         }
     }
 }

@@ -210,11 +210,13 @@ function shellQuote(s) {
     return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
-// Shell command that prints every note/quote file of a source as records
-function loadCommand(path) {
+// Shell command that prints every note/quote file of a source as records.
+// recursive false: only notes directly in the folder, not in its subfolders.
+function loadCommand(path, recursive) {
     var q = shellQuote(path);
+    var depth = recursive === false ? " -maxdepth 1" : "";
     var each = shellQuote('for f; do printf "\\036FILE:%s\\n" "$f"; cat "$f"; done');
-    return "if [ -d " + q + " ]; then find " + q + " -mindepth 1 -name '.*' -prune -o -type f -name '*.md' -exec sh -c " + each + " sh {} +; " +
+    return "if [ -d " + q + " ]; then find " + q + " -mindepth 1" + depth + " -name '.*' -prune -o -type f -name '*.md' -exec sh -c " + each + " sh {} +; " +
            "else printf '\\036FILE:%s\\n' " + q + "; cat " + q + "; fi";
 }
 

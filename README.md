@@ -6,11 +6,12 @@ Sources, chosen per widget in its settings:
 
 - **A folder**: every `.md` note inside it, subfolders included (hidden folders such as `.obsidian` and `.trash` are skipped). A note is shown without its YAML front matter; its first embedded image (`![[name.jpg]]` or `![](path.jpg)`) goes on top, the rest is rendered as Markdown. Obsidian syntax is translated: `[[links]]` become plain text, `==highlights==` bold, `%%comments%%` hidden, single line breaks kept.
 - **A Markdown file**: that one note.
+- Each source in the settings list has a checkbox to switch it off without removing it, and folders have a Subfolders checkbox: off means only the notes directly in that folder.
 - **A text file**: quotes in fortune format, entries separated by a line holding only `%` (see [creating_quotes.md](creating_quotes.md)). Entries may use Markdown.
 
 Set the Obsidian vault folder in the settings so images embedded by name are found anywhere in the vault, as Obsidian finds them.
 
-Click the widget for the next piece. Pieces come in shuffled order; all are shown once before any repeats. Click `…` (bottom right) to open the current note or quote file in its default app. Right-click for: Next Piece, Open in Default App, Open in Obsidian, Open Containing Folder, Reload from Disk. The sources are rescanned on a timer, so new notes show up by themselves.
+Click the widget for the next piece. Pieces come in shuffled order; all are shown once before any repeats. Right-click for: Next Piece, Open in Default App, Open in Obsidian, Open Containing Folder, Reload from Disk. The sources are rescanned on a timer, so new notes show up by themselves.
 
 This is a fork of [Quote of the Day](https://gitlab.com/plasma-qotd-widget/plasma-qotd-widget) by Prajjwal Devkota.
 
