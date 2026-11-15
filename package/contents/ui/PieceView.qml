@@ -1,4 +1,4 @@
-// Shows one piece: optional image on top, Markdown text below, scrolls when long.
+// Shows one piece: images on top, Markdown text below, scrolls when long.
 // Uses only QtQuick, so it can be tested outside Plasma.
 import QtQuick
 import QtQuick.Controls
@@ -8,8 +8,9 @@ Item {
     id: view
 
     property string text: ""
-    property url imageSource: ""
+    property var images: []            // file:// URLs, shown stacked above the text
     property real imageMaxHeight: height * 0.6
+    property bool showScrollbar: true
     property color textColor: "white"
     property color outlineColor: "black"
     property string fontFamily: ""
@@ -21,7 +22,8 @@ Item {
 
     signal clicked()
 
-    readonly property bool hasImage: imageSource.toString() !== "" && pieceImage.status !== Image.Error
+    // Room kept free on the right for the scrollbar, so it never covers text
+    readonly property real scrollbarRoom: showScrollbar ? bar.implicitWidth + 2 : 0
 
     Flickable {
         id: flick
@@ -32,7 +34,8 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
 
         ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
+            id: bar
+            policy: view.showScrollbar ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
         }
 
         Item {
@@ -49,31 +52,40 @@ Item {
 
             Column {
                 id: column
-                width: parent.width
+                width: parent.width - view.scrollbarRoom
                 y: Math.max(0, (flick.height - height) / 2)
-                spacing: view.hasImage && pieceText.text !== "" ? view.spacing : 0
+                spacing: view.spacing
 
-                Image {
-                    id: pieceImage
-                    source: view.imageSource
-                    visible: view.hasImage
-                    asynchronous: true
-                    fillMode: Image.PreserveAspectFit
-                    // Load large images scaled down to the size they are shown at
-                    sourceSize.width: Math.max(1, Math.ceil(column.width * Screen.devicePixelRatio))
-                    width: column.width
-                    height: {
-                        if (!visible || status !== Image.Ready || implicitWidth <= 0) return visible ? Math.min(view.imageMaxHeight, column.width) : 0;
-                        return Math.min(view.imageMaxHeight, column.width * implicitHeight / implicitWidth);
+                Repeater {
+                    model: view.images
+
+                    Image {
+                        required property var modelData
+                        source: modelData
+                        visible: status !== Image.Error
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                        // Load large images scaled down to the size they are shown at
+                        sourceSize.width: Math.max(1, Math.ceil(column.width * Screen.devicePixelRatio))
+                        width: column.width
+                        height: {
+                            if (!visible) return 0;
+                            if (status !== Image.Ready || implicitWidth <= 0) return Math.min(view.imageMaxHeight, column.width);
+                            return Math.min(view.imageMaxHeight, column.width * implicitHeight / implicitWidth);
+                        }
                     }
                 }
 
                 Text {
                     id: pieceText
                     width: column.width
+                    visible: text !== ""
                     text: view.text
                     textFormat: Text.MarkdownText
                     wrapMode: Text.Wrap
+                    // A few pixels of inner margin so the last word of a line never touches the edge
+                    leftPadding: 3
+                    rightPadding: 3
                     horizontalAlignment: view.alignment
                     color: view.textColor
                     style: Text.Outline
@@ -95,5 +107,5 @@ Item {
 
     // Jump back to the top whenever a new piece is shown
     onTextChanged: flick.contentY = 0
-    onImageSourceChanged: flick.contentY = 0
+    onImagesChanged: flick.contentY = 0
 }

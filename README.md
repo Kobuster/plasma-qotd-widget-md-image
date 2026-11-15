@@ -9,6 +9,8 @@ Sources, chosen per widget in its settings:
 - Each source in the settings list has a checkbox to switch it off without removing it, and folders have a Subfolders checkbox: off means only the notes directly in that folder.
 - **A text file**: quotes in fortune format, entries separated by a line holding only `%` (see [creating_quotes.md](creating_quotes.md)). Entries may use Markdown.
 
+The Rendering page of the settings decides, per widget, how a note becomes a piece: first image, all images or none, and their maximum height; keep or hide the note's heading, or use the file name when there is none; keep tags, hide lines of only tags, or hide all tags; show or hide the YAML front matter; the whole note, the first paragraphs, about a number of characters, or everything before a cut marker such as a line holding only `%%more%%`; Obsidian-style or standard line breaks; text alignment; and a scrollbar for long pieces.
+
 Set the Obsidian vault folder in the settings so images embedded by name are found anywhere in the vault, as Obsidian finds them.
 
 Click the widget for the next piece. Pieces come in shuffled order; all are shown once before any repeats. Right-click for: Next Piece, Open in Default App, Open in Obsidian, Open Containing Folder, Reload from Disk. The sources are rescanned on a timer, so new notes show up by themselves.
@@ -24,7 +26,7 @@ This is a fork of [Quote of the Day](https://gitlab.com/plasma-qotd-widget/plasm
 ./build.sh               # build/com.github.kobuster.noteshuffle.plasmoid, for installing elsewhere
 ```
 
-Then right-click the desktop, choose Add Widgets, and drag "Note Shuffle" onto the desktop. Right-click the widget and choose Configure to pick sources, the vault folder, timers, image height, text alignment, font, colours and background opacity.
+Then right-click the desktop, choose Add Widgets, and drag "Note Shuffle" onto the desktop. Right-click the widget and choose Configure: General has sources, the vault folder, timers, font, colours and background opacity; Rendering has the options above.
 
 ## License
 

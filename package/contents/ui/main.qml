@@ -31,6 +31,20 @@ PlasmoidItem {
     property color backgroundColor: plasmoid.configuration.backgroundColor
     property string textFont: plasmoid.configuration.textFont
     property bool debugMode: plasmoid.configuration.debugMode
+    property bool showScrollbar: plasmoid.configuration.showScrollbar
+
+    // Rendering options, in the form code/pieces.js expects
+    property var renderOptions: ({
+        frontMatter: plasmoid.configuration.showFrontMatter ? "show" : "hide",
+        tags: ["keep", "lines", "all"][plasmoid.configuration.tagMode] || "lines",
+        images: ["first", "all", "none"][plasmoid.configuration.imageMode] || "first",
+        title: ["keep", "hide", "filename"][plasmoid.configuration.titleMode] || "keep",
+        length: ["whole", "paragraphs", "chars", "marker"][plasmoid.configuration.lengthMode] || "whole",
+        paragraphs: plasmoid.configuration.lengthParagraphs,
+        chars: plasmoid.configuration.lengthChars,
+        marker: plasmoid.configuration.cutMarker,
+        lineBreaks: plasmoid.configuration.obsidianLineBreaks ? "obsidian" : "markdown"
+    })
 
     // State
     property var pieces: []          // [{text, image, sourceFile, sourceIndex}]
@@ -183,7 +197,7 @@ PlasmoidItem {
         var index = Pieces.buildImageIndex(imagePaths);
         var all = [];
         for (var i = 0; i < loadedFiles.length; i++) {
-            all = all.concat(Pieces.fileToPieces(loadedFiles[i], vaultPath, index));
+            all = all.concat(Pieces.fileToPieces(loadedFiles[i], vaultPath, index, renderOptions));
         }
         log("loaded", all.length, "pieces from", loadedFiles.length, "files");
         pieces = all;
@@ -258,6 +272,11 @@ PlasmoidItem {
     onDisabledSourcesChanged: loadSources(true)
     onFlatSourcesChanged: loadSources(true)
     onVaultPathChanged: loadSources(true)
+    // Rendering changes only need the files already read, not a new disk scan
+    onRenderOptionsChanged: if (loadedFiles.length > 0 && loadsLeft === 0) {
+        keepCurrentOnLoad = true;
+        finishLoading();
+    }
 
     fullRepresentation: Item {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 6
@@ -273,7 +292,8 @@ PlasmoidItem {
             anchors.fill: parent
             anchors.margins: 10
             text: root.current ? root.current.text : root.statusText
-            imageSource: root.current && root.current.image ? Pieces.fileUrl(root.current.image) : ""
+            images: root.current && root.current.images ? root.current.images.map(Pieces.fileUrl) : []
+            showScrollbar: root.showScrollbar
             imageMaxHeight: height * root.imageMaxHeight
             alignment: [Text.AlignLeft, Text.AlignHCenter, Text.AlignJustify][root.textAlignment] || Text.AlignHCenter
             textColor: root.textColor

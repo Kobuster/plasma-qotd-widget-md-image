@@ -20,7 +20,7 @@
         "ServiceTypes": [
             "Plasma/Applet"
         ],
-        "Version": "0.3.0",
+        "Version": "0.4.0",
         "Website": "https://github.com/Kobuster/plasma-qotd-widget-md-image"
     },
     "X-Plasma-API": "declarativeappletscript",

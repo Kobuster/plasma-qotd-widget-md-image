@@ -7,4 +7,9 @@ ConfigModel {
         icon: "preferences-desktop-default-applications"
         source: "configGeneral.qml"
     }
+    ConfigCategory {
+        name: i18n("Rendering")
+        icon: "preferences-desktop-font"
+        source: "configRendering.qml"
+    }
 }

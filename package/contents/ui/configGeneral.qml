@@ -32,8 +32,6 @@ KCM.SimpleKCM {
     property bool cfg_debugMode
     property string cfg_vaultPath
     property alias cfg_rescanInterval: rescanSpinBox.value
-    property alias cfg_imageMaxHeight: imageMaxHeightSlider.value
-    property alias cfg_textAlignment: alignmentCombo.currentIndex
 
     // Dialogs return file:// URLs with %-escapes; the widget stores plain paths
     function urlToPath(url) {
@@ -272,29 +270,6 @@ KCM.SimpleKCM {
             Label {
                 text: i18n("mins")
             }
-        }
-
-        RowLayout {
-            Kirigami.FormData.label: i18n("Image height, at most:")
-
-            Slider {
-                id: imageMaxHeightSlider
-                Layout.fillWidth: true
-                from: 0.1
-                to: 1.0
-                stepSize: 0.05
-            }
-
-            Label {
-                text: i18n("%1% of the widget", Math.round(imageMaxHeightSlider.value * 100))
-                Layout.minimumWidth: 50
-            }
-        }
-
-        ComboBox {
-            id: alignmentCombo
-            Kirigami.FormData.label: i18n("Text alignment:")
-            model: [i18n("Left"), i18n("Centered"), i18n("Justified")]
         }
 
         // Background Opacity

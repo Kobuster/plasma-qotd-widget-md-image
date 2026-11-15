@@ -4,6 +4,25 @@
 
 var IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "jp2"];
 
+// Rendering options and their defaults (the widget passes the user's settings)
+//   frontMatter: "hide" | "show"
+//   tags:        "keep" | "lines" (hide lines made only of tags) | "all" (hide every #tag)
+//   images:      "first" | "all" | "none"
+//   title:       "keep" | "hide" | "filename" (add the file name when a note has no heading)
+//   length:      "whole" | "paragraphs" | "chars" | "marker"
+//   paragraphs, chars: limits for those length modes; marker: the cut line, e.g. %%more%%
+//   lineBreaks:  "obsidian" (every line break shows) | "markdown" (lines in a paragraph join)
+var DEFAULTS = {
+    frontMatter: "hide", tags: "lines", images: "first", title: "keep",
+    length: "whole", paragraphs: 3, chars: 600, marker: "%%more%%", lineBreaks: "obsidian"
+};
+
+function withDefaults(opts) {
+    var o = {};
+    for (var k in DEFAULTS) o[k] = (opts && opts[k] !== undefined && opts[k] !== null && opts[k] !== "") ? opts[k] : DEFAULTS[k];
+    return o;
+}
+
 function extensionOf(path) {
     var name = String(path).split("/").pop();
     var dot = name.lastIndexOf(".");
@@ -24,13 +43,104 @@ function dirName(path) {
     return parts.join("/");
 }
 
-// Remove YAML front matter at the very top of a note
-function stripFrontMatter(text) {
-    if (text.indexOf("---\n") !== 0) return text;
+// Split YAML front matter at the very top of a note from the body: {yaml, body}
+function splitFrontMatter(text) {
+    if (text.indexOf("---\n") !== 0) return { yaml: "", body: text };
     var end = text.indexOf("\n---", 3);
-    if (end === -1) return text;
+    if (end === -1) return { yaml: "", body: text };
     var after = text.indexOf("\n", end + 4);
-    return after === -1 ? "" : text.substring(after + 1);
+    return { yaml: text.substring(4, end), body: after === -1 ? "" : text.substring(after + 1) };
+}
+
+function stripFrontMatter(text) {
+    return splitFrontMatter(text).body;
+}
+
+// Obsidian tags: #word, #nested/tag; not headings ("# Title") and not inside words
+var TAG_RE = /(^|[\s(])#[^\s#.,;:!?"'()\[\]{}<>`]+/g;
+
+function removeTags(text, mode) {
+    if (mode === "keep") return text;
+    var lines = text.split("\n");
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+        var withoutTags = lines[i].replace(TAG_RE, "$1");
+        if (lines[i].trim() !== "" && withoutTags.trim() === "") continue; // a line of only tags
+        out.push(mode === "all" ? withoutTags.replace(/(\S)[ \t]{2,}(?=\S)/g, "$1 ").replace(/[ \t]+$/, "") : lines[i]);
+    }
+    return out.join("\n");
+}
+
+// The first non-empty line, if it is a heading: its index in lines, or -1
+function titleLineIndex(lines) {
+    for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === "") continue;
+        return /^#{1,6}\s/.test(lines[i]) ? i : -1;
+    }
+    return -1;
+}
+
+function applyTitle(text, mode, path) {
+    if (mode === "keep") return text;
+    var lines = text.split("\n");
+    var t = titleLineIndex(lines);
+    if (mode === "hide" && t !== -1) lines.splice(t, 1);
+    if (mode === "filename" && t === -1 && path) lines.unshift("# " + baseName(path).replace(/\.md$/i, ""), "");
+    return lines.join("\n");
+}
+
+// Blocks separated by blank lines, keeping fenced code blocks whole
+function splitBlocks(text) {
+    var blocks = [], cur = [], inFence = false;
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+        if (/^\s*(```|~~~)/.test(lines[i])) inFence = !inFence;
+        if (!inFence && lines[i].trim() === "") {
+            if (cur.length) { blocks.push(cur.join("\n")); cur = []; }
+        } else {
+            cur.push(lines[i]);
+        }
+    }
+    if (cur.length) blocks.push(cur.join("\n"));
+    return blocks;
+}
+
+// Shorten a piece: {text, cut}
+function applyLength(text, o) {
+    var blocks = splitBlocks(text);
+    var head = [];
+    // A leading title does not count against the limit
+    if (blocks.length && /^#{1,6}\s/.test(blocks[0]) && blocks[0].indexOf("\n") === -1) head.push(blocks.shift());
+    var keep = [];
+    if (o.length === "paragraphs") {
+        var n = Math.max(1, parseInt(o.paragraphs) || 1);
+        keep = blocks.slice(0, n);
+    } else if (o.length === "chars") {
+        var limit = Math.max(50, parseInt(o.chars) || 600), used = 0;
+        for (var i = 0; i < blocks.length; i++) {
+            if (used + blocks[i].length <= limit) { keep.push(blocks[i]); used += blocks[i].length; continue; }
+            if (keep.length === 0) {
+                // The first paragraph alone is too long: cut it at a sentence end, else at a space
+                var part = blocks[i].substring(0, limit);
+                var end = Math.max(part.lastIndexOf(". "), part.lastIndexOf("! "), part.lastIndexOf("? "), part.lastIndexOf("… "));
+                keep.push(end > limit / 3 ? part.substring(0, end + 1) : part.substring(0, part.lastIndexOf(" ") > 0 ? part.lastIndexOf(" ") : limit));
+            }
+            break;
+        }
+    } else {
+        return { text: text, cut: false };
+    }
+    var cut = keep.length < blocks.length || (keep.length && blocks.length && keep[keep.length - 1] !== blocks[keep.length - 1]);
+    return { text: head.concat(keep).join("\n\n"), cut: cut };
+}
+
+// Cut at a line holding only the marker (checked before comments are removed)
+function cutAtMarker(text, marker) {
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === marker) return { text: lines.slice(0, i).join("\n"), cut: true };
+    }
+    return { text: text, cut: false };
 }
 
 // Obsidian [[target|alias]], [[target#heading]], [[target]] -> visible text
@@ -60,7 +170,7 @@ function keepLineBreaks(text) {
 }
 
 // Convert Obsidian-flavoured Markdown into what Qt's Markdown renderer shows well
-function cleanMarkdown(text) {
+function cleanMarkdown(text, lineBreaks) {
     text = text.replace(/%%[\s\S]*?%%/g, "");                     // comments
     text = text.replace(/!\[\[[^\]]*\]\]/g, "");                  // remaining embeds
     text = text.replace(/!\[[^\]]*\]\((?:[^()\s]|\([^()]*\))*\)/g, ""); // remaining image links
@@ -70,7 +180,7 @@ function cleanMarkdown(text) {
     // _italic_ (Qt shows underscores as underline, Obsidian as italic); leaves snake_case alone
     text = text.replace(/(^|[^\w*_])_([^_\s](?:[^_\n]*[^_\s])?)_(?=[^\w]|$)/gm, "$1*$2*");
     text = text.replace(/\n{3,}/g, "\n\n").trim();
-    return keepLineBreaks(text);
+    return lineBreaks === "markdown" ? text : keepLineBreaks(text);
 }
 
 // First image embed of a note: {target, kind, start, end} or null
@@ -92,6 +202,18 @@ function findFirstImage(text) {
         }
     }
     return null;
+}
+
+// All image embeds of a note, in order
+function findAllImages(text) {
+    var found = [];
+    var rest = text, offset = 0, img;
+    while ((img = findFirstImage(rest)) !== null) {
+        found.push({ target: img.target, kind: img.kind, start: img.start + offset, end: img.end + offset });
+        offset += img.end;
+        rest = rest.substring(img.end);
+    }
+    return found;
 }
 
 // Index of image files: {byPath: {path: true}, byName: {name: [paths]}}
@@ -154,27 +276,51 @@ function normalizePath(path) {
     return out.join("/");
 }
 
-// A Markdown note becomes one piece: first image on top, the rest as Markdown
-function noteToPiece(raw, path, vaultPath, index) {
-    var text = stripFrontMatter(raw.replace(/\r\n?/g, "\n"));
-    var image = findFirstImage(text);
-    var imagePath = "";
-    if (image) {
-        imagePath = resolveImage(image, path, vaultPath, index);
-        text = text.substring(0, image.start) + text.substring(image.end);
+// Shared steps for a note or quote: title, tags, length, Markdown clean-up
+function renderText(text, path, o, isNote) {
+    var cut = false;
+    if (o.length === "marker") {
+        var m = cutAtMarker(text, o.marker);
+        text = m.text; cut = m.cut;
     }
-    return { text: cleanMarkdown(text), image: imagePath, sourceFile: path, sourceIndex: 0 };
+    text = removeTags(text, o.tags);
+    text = applyTitle(text, o.title === "filename" && !isNote ? "keep" : o.title, path);
+    text = cleanMarkdown(text, "markdown");
+    if (o.length === "paragraphs" || o.length === "chars") {
+        var l = applyLength(text, o);
+        text = l.text; cut = cut || l.cut;
+    }
+    if (o.lineBreaks !== "markdown") text = keepLineBreaks(text);
+    if (cut) text += "\n\n…";
+    return text;
+}
+
+// A Markdown note becomes one piece: images on top, the rest as Markdown
+function noteToPiece(raw, path, vaultPath, index, opts) {
+    var o = withDefaults(opts);
+    var fm = splitFrontMatter(raw.replace(/\r\n?/g, "\n"));
+    var text = fm.body;
+    var found = o.images === "none" ? [] : (o.images === "all" ? findAllImages(text) : [findFirstImage(text)].filter(function (x) { return x; }));
+    var images = [];
+    for (var i = found.length - 1; i >= 0; i--) {
+        images.unshift(resolveImage(found[i], path, vaultPath, index));
+        text = text.substring(0, found[i].start) + text.substring(found[i].end);
+    }
+    text = renderText(text, path, o, true);
+    if (o.frontMatter === "show" && fm.yaml.trim() !== "") text = "```\n" + fm.yaml.trim() + "\n```\n\n" + text;
+    return { text: text, images: images, image: images.length ? images[0] : "", sourceFile: path, sourceIndex: 0 };
 }
 
 // A fortune file (entries separated by a line holding only %) becomes many pieces
-function fortuneToPieces(raw, path) {
+function fortuneToPieces(raw, path, opts) {
+    var o = withDefaults(opts);
     var text = raw.replace(/\r\n?/g, "\n");
     var entries = ("\n" + text + "\n").split(/\n%[ \t]*(?=\n)/);
     var pieces = [];
     for (var i = 0; i < entries.length; i++) {
         var entry = entries[i].trim();
         if (entry.length === 0) continue;
-        pieces.push({ text: cleanMarkdown(entry), image: "", sourceFile: path, sourceIndex: pieces.length });
+        pieces.push({ text: renderText(entry, path, o, false), images: [], image: "", sourceFile: path, sourceIndex: pieces.length });
     }
     return pieces;
 }
@@ -194,9 +340,9 @@ function splitRecords(output) {
     return files;
 }
 
-function fileToPieces(file, vaultPath, index) {
-    if (extensionOf(file.path) === "md") return [noteToPiece(file.content, file.path, vaultPath, index)];
-    return fortuneToPieces(file.content, file.path);
+function fileToPieces(file, vaultPath, index, opts) {
+    if (extensionOf(file.path) === "md") return [noteToPiece(file.content, file.path, vaultPath, index, opts)];
+    return fortuneToPieces(file.content, file.path, opts);
 }
 
 // Turn a path into a file:// URL, escaping characters such as # and ?
